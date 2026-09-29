@@ -116,6 +116,7 @@ export async function finishLogin(query: Record<string, unknown>): Promise<{
     throw new ApiError(502, 'instagram_login_failed', 'Profil Instagram tidak terbaca');
   const [owner] = await officialSql.findByUser(db, [igUser]);
   if (owner[0] && owner[0].account_id !== account) return { result: 'in_use' };
+  await subscribeWebhook(igUser, token);
   const permissions = Array.isArray(short.permissions) ? short.permissions.join(',') : String(short.permissions ?? '');
   await officialSql.upsert(db, [
     account,
@@ -127,6 +128,19 @@ export async function finishLogin(query: Record<string, unknown>): Promise<{
     lifetime,
   ]);
   return { result: 'connected', account, igUser };
+}
+// Tanpa langganan ini Meta tidak mengirim DM akun tersebut ke webhook. Kegagalan hanya dicatat: login tetap sah dan
+// langganan diulang pada login berikutnya.
+async function subscribeWebhook(igUser: string, token: string) {
+  try {
+    const response = await fetch(
+      urls().graph + '/v23.0/' + encodeURIComponent(igUser) + '/subscribed_apps?subscribed_fields=messages',
+      { method: 'POST', headers: { Authorization: 'Bearer ' + token }, signal: TIMEOUT() },
+    );
+    if (!response.ok) log('instagram-official', 'Langganan webhook ditolak Meta (' + response.status + ')');
+  } catch {
+    log('instagram-official', 'Langganan webhook gagal');
+  }
 }
 export type OfficialStatus = 'active' | 'expiring' | 'expired' | 'revoked';
 export async function listOfficial(account: string) {

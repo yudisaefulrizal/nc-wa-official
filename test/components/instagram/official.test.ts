@@ -21,8 +21,16 @@ process.env.INSTAGRAM_APP_ID = '111';
 process.env.INSTAGRAM_APP_SECRET = 'secret-uji';
 let refreshed = 0;
 const sentMessages: { path: string; auth?: string; body: string }[] = [];
+const subscriptions: string[] = [];
 const meta = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://meta.test');
+  if (req.method === 'POST' && url.pathname.endsWith('/subscribed_apps')) {
+    subscriptions.push(
+      url.pathname + '?' + url.searchParams.get('subscribed_fields') + ' ' + req.headers.authorization,
+    );
+    res.setHeader('Content-Type', 'application/json');
+    return void res.end('{"success":true}');
+  }
   if (req.method === 'POST' && url.pathname.endsWith('/messages')) {
     let body = '';
     for await (const chunk of req) body += chunk;
@@ -99,6 +107,7 @@ test('login menyimpan token terenkripsi dan daftar tidak membocorkannya', async 
   const result = await callback();
   assert.equal(result.status, 302);
   assert.equal(result.headers.location, '/dashboard/integrasi?instagram=connected');
+  assert.deepEqual(subscriptions.at(-1), '/v23.0/17841400000000009/subscribed_apps?messages Bearer long-token');
   const listed = await request(app).get('/api/instagram/official').set('Cookie', cookie(0));
   assert.equal(listed.body.length, 1);
   assert.equal(listed.body[0].username, 'kopisenja');
@@ -279,6 +288,17 @@ test('callback deauthorize dan data-deletion memverifikasi tanda tangan Meta', a
   assert.equal(deletion.status, 200);
   assert.match(deletion.body.confirmation_code, /^[a-f0-9]{16}$/);
   assert.equal((await request(app).get('/api/instagram/official').set('Cookie', cookie(0))).body.length, 0);
+});
+test('kebijakan privasi bisa dibuka publik tanpa login', async () => {
+  const response = await request(app).get('/privacy');
+  assert.equal(response.status, 200);
+  assert.match(response.text, /Kebijakan Privasi/);
+  assert.match(response.text, /data-deletion|Putuskan/);
+});
+test('ketentuan layanan bisa dibuka publik tanpa login', async () => {
+  const response = await request(app).get('/terms');
+  assert.equal(response.status, 200);
+  assert.match(response.text, /Ketentuan Layanan/);
 });
 test('tanpa konfigurasi Instagram Login, tombol mengembalikan 503', async () => {
   const id = process.env.INSTAGRAM_APP_ID;
