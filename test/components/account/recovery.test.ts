@@ -6,7 +6,7 @@ import request from 'supertest';
 import { db } from '../../../src/libraries/db.js';
 import { app } from '../../../src/http/app.js';
 import { hashPassword } from '../../../src/libraries/security.js';
-const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068',
+const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069',
   ids: string[] = [];
 after(async () => {
   for (const id of ids) {

@@ -39,7 +39,7 @@ Struktur mengikuti Node.js Best Practices: kode dikelompokkan per komponen bisni
 | `test/` | Tes, dengan jalur yang sama seperti `src/` (`test/components/ai/profiles.test.ts` menguji `src/components/ai`); `test/components/ai/graph-fixture.ts` berisi graf uji bersama untuk tes runtime. |
 | `scripts/test/`, `scripts/checks/`, `scripts/tools/` | Runner tes terisolasi, pemeriksaan browser, dan utilitas (`owner`, `backup`, `restore-check`, `setup-*`, `bench`). |
 
-Komponen: `account` (akun, login, API key), `billing` (paket, kredit WhatsApp, pembayaran, kirim berbayar), `whatsapp` (sesi Baileys, pesan, media, event, webhook), `instagram` (Instagram DM lewat Zernio: akun Zernio klien, konektor sesi, webhook, alur hubungkan), `ai` (Asisten AI, profil graf dan Editor profil), `auto-share`, dan `referral`.
+Komponen: `account` (akun, login, API key), `billing` (paket, kredit WhatsApp, pembayaran, kirim berbayar), `whatsapp` (sesi Baileys, pesan, media, event, webhook), `instagram` (Instagram DM lewat Zernio: akun Zernio klien, konektor sesi, webhook, alur hubungkan; plus Instagram Login resmi langsung ke Meta di `domain/official-login.ts`, tabel `instagram_official`, env `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET`, redirect `APP_ORIGIN/auth/instagram/callback`; baru autentikasi dan token, belum mengirim/menerima DM), `ai` (Asisten AI, profil graf dan Editor profil), `auto-share`, dan `referral`.
 
 **Aturan ketergantungan**
 - Arah panggilan: `entry-points` → `domain` → `data-access` → `libraries`. Jangan dibalik.

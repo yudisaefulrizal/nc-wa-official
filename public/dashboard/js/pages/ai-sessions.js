@@ -92,7 +92,7 @@ function buildSessionCard(s, offset) {
     status.onclick = e => {
       e.stopPropagation();
       run(async () => {
-        // Sesi Instagram tidak memakai QR; yang terputus dihubungkan ulang lewat login Instagram di Zernio.
+        // Sesi Instagram tidak memakai QR: lewat Zernio dihubungkan ulang di Zernio, lewat login resmi dari sini.
         if (s.channel === 'instagram') {
           if (s.status === 'logged_out') await reconnectInstagram(s);
           return;
@@ -110,6 +110,21 @@ function buildSessionCard(s, offset) {
   phone.textContent = sessionAccountLabel(s);
   nameBlock.append(name, phone);
   head.append(status, nameBlock);
+  // Putuskan sesi hanya di kartu tengah dan hanya bila sedang tersambung; riwayat chat dan data AI tetap tersimpan.
+  if (active && s.status !== 'logged_out') {
+    const disconnect = button('Putuskan', async () => {
+      const how =
+        s.channel === 'instagram'
+          ? 'AI berhenti membalas DM ' + sessionAccountLabel(s) + '.'
+          : 'Perangkat WhatsApp ' + sessionAccountLabel(s) + ' dikeluarkan; memasang ulang butuh scan QR.';
+      if (!confirm('Putuskan ' + s.id + '?\n' + how + '\nRiwayat chat dan data profil tetap tersimpan.')) return;
+      await api('/sessions/' + encodeURIComponent(s.id) + '/logout', 'POST');
+      await refreshIntegrations();
+    });
+    disconnect.classList.add('ai-session-disconnect', 'secondary');
+    disconnect.addEventListener('click', e => e.stopPropagation());
+    head.append(disconnect);
+  }
   const foot = document.createElement('div');
   foot.className = 'ai-session-card-foot';
   const toggle = document.createElement('label');

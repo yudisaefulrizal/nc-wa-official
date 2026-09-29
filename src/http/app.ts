@@ -23,9 +23,9 @@ import { instagram, instagramPublicRoutes, instagramRoutes } from '../components
 
 export function createApp(gateway = defaultGateway, payments = defaultPayments, referral = defaultReferral) {
   const app = express();
-  const configuredOrigin = new URL(process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068');
+  const configuredOrigin = new URL(process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069');
   if (
-    configuredOrigin.origin !== (process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068') ||
+    configuredOrigin.origin !== (process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069') ||
     !['http:', 'https:'].includes(configuredOrigin.protocol)
   )
     throw new Error('APP_ORIGIN harus berupa origin HTTP/HTTPS tanpa path');
@@ -46,7 +46,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   );
   billingPublicRoutes(app, { payments, gateway });
   assetPublicRoutes(app, { gateway });
-  const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
+  const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069';
   app.use(
     ['/auto-share', '/sessions', '/ai', '/stats', '/webhooks', '/media', '/events'],
     rateLimit({ windowMs: 60000, limit: 120 }),

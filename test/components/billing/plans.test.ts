@@ -47,7 +47,7 @@ test('Concurrent grants/reset happen once and replace remaining balance', async 
 test('Registration grants current basic quota and denies plan administration', async () => {
   const email = `test-${randomUUID()}@example.test`,
     password = 'test-password-long-123',
-    origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
+    origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069';
   await request(app).post('/api/auth/register').set('Origin', origin).send({ email, password }).expect(201);
   const [rows] = await db.execute<RowDataPacket[]>('SELECT id FROM accounts WHERE email=?', [email]);
   ids.push(rows[0].id);
@@ -78,7 +78,7 @@ test('Owner manages catalog, basic cannot be disabled, changes do not mutate wal
   ]);
   const wallet = await basicWallet(id);
   const a = request.agent(app),
-    origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
+    origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069';
   try {
     await a.post('/api/auth/login').set('Origin', origin).send({ email, password }).expect(200);
     await a

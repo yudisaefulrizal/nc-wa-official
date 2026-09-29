@@ -39,7 +39,7 @@ const service = new AIService(
   async () => {},
 );
 const app = createApp();
-const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
+const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069';
 const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(120, 1)]);
 const f = (id: string, type: string, extra: Record<string, unknown> = {}) => ({
   id,

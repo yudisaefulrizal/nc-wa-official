@@ -1473,16 +1473,17 @@
                   ><strong>WhatsApp</strong><small>Scan QR dari WhatsApp → Perangkat tertaut.</small></span
                 ></label
               ><label class="session-kind"
+                ><input type="radio" name="kind" value="instagram-official" /><span
+                  ><strong>Instagram</strong><small>Masuk dengan akun Instagram Bisnis atau Kreator Anda.</small></span
+                ></label
+              ><label class="session-kind"
                 ><input type="radio" name="kind" value="instagram" /><span
-                  ><strong>Instagram DM</strong
-                  ><small
-                    >Lewat akun Zernio Anda. Akun Instagram harus Business atau Creator. Balasan memakai kredit yang
-                    sama dengan WhatsApp.</small
-                  ></span
+                  ><strong>Instagram lewat Zernio</strong
+                  ><small>Memakai akun Zernio Anda; balasan memakai kredit yang sama dengan WhatsApp.</small></span
                 ></label
               >
             </fieldset>
-            <label
+            <label id="session-name-field"
               >Nama sesi<input
                 name="id"
                 required
@@ -1508,6 +1509,13 @@
             </div>
             <button id="session-submit">Hubungkan sesi</button>
           </form>
+        </dialog>
+        <dialog id="integration-dialog" aria-labelledby="integration-dialog-title">
+          <div class="modal-heading">
+            <h2 id="integration-dialog-title">Koneksi</h2>
+            <button type="button" class="secondary" data-close="integration-dialog">Tutup</button>
+          </div>
+          <div id="integration-dialog-body" class="integration-dialog-body"></div>
         </dialog>
         <dialog id="zernio-dialog" aria-labelledby="zernio-title">
           <div class="modal-heading">
@@ -1705,36 +1713,14 @@
         </section>
         <section id="integrasi" hidden>
           <div class="integrations-head">
-            <div>
-              <span class="label">JATAH SESI PAKET</span>
-              <strong id="integrations-quota">—</strong>
+            <strong id="integrations-quota">—</strong>
+            <div class="integrations-buttons">
+              <button type="button" id="integrations-add">+ Tambah sesi</button>
             </div>
-            <button type="button" id="integrations-add">+ Tambah koneksi</button>
           </div>
-          <div id="integrations-alert" class="integrations-alert" role="status" hidden></div>
-          <section class="integrations-card" aria-labelledby="integrations-title">
-            <div class="integrations-card-head">
-              <h2 id="integrations-title">Koneksi</h2>
-              <div
-                id="integrations-filters"
-                class="integrations-filters"
-                role="group"
-                aria-label="Filter platform"
-              ></div>
-            </div>
-            <div id="integrations-list"></div>
-          </section>
+          <div id="integrations-grid" class="integrations-grid"></div>
           <section class="integrations-card" aria-labelledby="providers-title">
-            <div class="integrations-card-head">
-              <div>
-                <h2 id="providers-title">Akun penyedia</h2>
-                <p class="hint">
-                  Kunci API untuk Instagram DM. Akun Instagram ditambahkan dan dihubungkan ulang di dashboard Zernio;
-                  biaya Zernio ditagih langsung ke Anda.
-                </p>
-              </div>
-              <button type="button" class="secondary" data-open-zernio>+ Tambah akun Zernio</button>
-            </div>
+            <h2 id="providers-title" class="sr-only">Akun Zernio</h2>
             <div id="integrations-providers" class="integrations-providers"></div>
           </section>
         </section>

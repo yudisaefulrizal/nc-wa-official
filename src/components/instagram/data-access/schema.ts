@@ -16,3 +16,23 @@ export async function migrateInstagram() {
     `CREATE TABLE IF NOT EXISTS instagram_contacts (account_id CHAR(36) NOT NULL,session_id VARCHAR(64) COLLATE utf8mb4_bin NOT NULL,customer VARCHAR(20) COLLATE utf8mb4_bin NOT NULL,username VARCHAR(100) NOT NULL DEFAULT '',name VARCHAR(100) NOT NULL DEFAULT '',updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,PRIMARY KEY(account_id,session_id,customer),FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE) ENGINE=InnoDB`,
   );
 }
+// Instagram Login resmi (langsung ke Meta, tanpa Zernio): satu baris per akun Instagram yang diizinkan. Token
+// disimpan terenkripsi; state OAuth disimpan sebagai hash dan hanya berlaku sekali.
+export async function migrateInstagramOfficial() {
+  // Sesi Instagram resmi memakai tabel kanal yang sama dengan Zernio; bedanya provider dan tanpa akun Zernio.
+  const [provider] = await db.query<any[]>(
+    "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='instagram_channels' AND COLUMN_NAME='provider'",
+  );
+  if (!provider.length) {
+    await db.query(
+      "ALTER TABLE instagram_channels ADD COLUMN provider ENUM('zernio','official') NOT NULL DEFAULT 'zernio'",
+    );
+    await db.query('ALTER TABLE instagram_channels MODIFY zernio_account_id CHAR(36) NULL');
+  }
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS instagram_official (account_id CHAR(36) NOT NULL,ig_user_id VARCHAR(64) NOT NULL,username VARCHAR(100) NOT NULL,account_type VARCHAR(30) NOT NULL DEFAULT '',token TEXT NOT NULL,permissions VARCHAR(500) NOT NULL DEFAULT '',status ENUM('active','revoked') NOT NULL DEFAULT 'active',expires_at DATETIME NULL,refreshed_at DATETIME NULL,created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),PRIMARY KEY(account_id,ig_user_id),UNIQUE KEY official_ig_user(ig_user_id),FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE) ENGINE=InnoDB`,
+  );
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS instagram_oauth_states (state_hash CHAR(64) PRIMARY KEY,account_id CHAR(36) NOT NULL,expires_at DATETIME NOT NULL,FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE) ENGINE=InnoDB`,
+  );
+}

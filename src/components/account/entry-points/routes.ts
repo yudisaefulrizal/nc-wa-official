@@ -14,7 +14,7 @@ import * as healthSql from '../data-access/health-queries.js';
 import * as loginSessionsSql from '../data-access/login-sessions-queries.js';
 import * as plansSql from '../data-access/plans-queries.js';
 
-const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
+const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069';
 // Cookie sesi yang dipasang saat login; juga dibaca gateway untuk mengizinkan panggilan dari browser.
 export const cookie = (req: express.Request) =>
   req.headers.cookie

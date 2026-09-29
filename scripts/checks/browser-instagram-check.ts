@@ -100,7 +100,7 @@ try {
   const dialog = page.locator('#addconnection');
   await dialog.waitFor({ state: 'visible' });
   assert.equal(await page.locator('#session-instagram').isVisible(), false);
-  await dialog.getByText('Instagram DM', { exact: true }).click();
+  await dialog.getByText('Instagram lewat Zernio', { exact: true }).click();
   await page.locator('#session-zernio-empty').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#session-submit').textContent(), 'Hubungkan Instagram');
   await mkdir(screenshots, { recursive: true });
@@ -136,7 +136,7 @@ try {
   assert.ok((await card.count()) > 0);
   // Akun yang sudah dipakai dan yang terputus di Zernio tidak bisa dipilih; tidak ada pilihan login dari NC-WA.
   await openAddSession();
-  await dialog.getByText('Instagram DM', { exact: true }).click();
+  await dialog.getByText('Instagram lewat Zernio', { exact: true }).click();
   await igSelect.locator('option', { hasText: '(sesi ig-shop)' }).waitFor({ state: 'attached' });
   assert.equal(
     await igSelect
@@ -149,7 +149,7 @@ try {
   await page.screenshot({ path: join(screenshots, 'instagram-connected-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   await openAddSession();
-  await dialog.getByText('Instagram DM', { exact: true }).click();
+  await dialog.getByText('Instagram lewat Zernio', { exact: true }).click();
   await page.locator('#session-instagram').waitFor({ state: 'visible' });
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   assert.ok(width <= 390, 'Tidak boleh ada gulir horizontal di ponsel: ' + width);

@@ -102,13 +102,18 @@ async function loadInstagramAccounts() {
 }
 // Menampilkan isian yang sesuai jenis sesi; pilihan akun Zernio hanya wajib untuk Instagram.
 function syncSessionKind() {
-  const instagram = $('sessionform').querySelector('input[name="kind"]:checked')?.value === 'instagram';
+  const kind = $('sessionform').querySelector('input[name="kind"]:checked')?.value;
+  const instagram = kind === 'instagram',
+    official = kind === 'instagram-official';
+  // Login resmi memberi nama sesi otomatis dari username, jadi isian nama disembunyikan.
+  $('session-name-field').hidden = official;
+  $('sessionform').elements.id.required = !official;
   $('session-instagram').hidden = !instagram;
   $('session-zernio').required = instagram;
   $('session-zernio').disabled = !instagram;
   $('session-instagram-account').required = instagram;
   $('session-instagram-account').disabled = !instagram;
-  $('session-submit').textContent = instagram ? 'Hubungkan Instagram' : 'Hubungkan sesi';
+  $('session-submit').textContent = instagram || official ? 'Hubungkan Instagram' : 'Hubungkan sesi';
   if (instagram) void run(loadZernio);
 }
 async function connectInstagram(sessionId, zernioId, instagramId) {

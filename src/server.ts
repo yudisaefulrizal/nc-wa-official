@@ -2,6 +2,7 @@
 // menjalankan penjadwal, rekonsiliasi pembayaran, dan server HTTP. Berhenti rapi saat SIGTERM/SIGINT.
 import { ai } from './components/ai/index.js';
 import { recoverReservations, startBasicScheduler } from './components/billing/index.js';
+import { instagram } from './components/instagram/index.js';
 import { gateway } from './http/gateway.js';
 import { app } from './http/app.js';
 import { db } from './libraries/db.js';
@@ -47,15 +48,21 @@ const tick = () => {
     });
 };
 const paymentTimer = setInterval(tick, 30000).unref();
+// Token Instagram Login berlaku 60 hari; yang hampir habis diperpanjang otomatis, dicek tiap 6 jam.
+const refreshInstagram = () =>
+  instagram.refreshExpiringOfficial().catch(() => console.error('Perpanjangan token Instagram gagal.'));
+const instagramTimer = setInterval(refreshInstagram, 6 * 3600000).unref();
+void refreshInstagram();
 tick();
-const server = app.listen(Number(process.env.PORT ?? 8068), process.env.HOST ?? '127.0.0.1', () =>
-  console.log('NC-WA SaaS siap pada port ' + (process.env.PORT ?? 8068)),
+const server = app.listen(Number(process.env.PORT ?? 8069), process.env.HOST ?? '127.0.0.1', () =>
+  console.log('NC-WA SaaS siap pada port ' + (process.env.PORT ?? 8069)),
 );
 let stopping = false;
 async function stop(code = 0) {
   if (stopping) return;
   stopping = true;
   clearInterval(paymentTimer);
+  clearInterval(instagramTimer);
   const closed = new Promise<void>(resolve => server.close(() => resolve()));
   server.closeIdleConnections();
   try {

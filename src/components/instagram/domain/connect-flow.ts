@@ -11,6 +11,7 @@ import { SessionManager } from '../../whatsapp/index.js';
 import { listInstagramAccounts } from './zernio-client.js';
 import { owned } from './zernio-accounts.js';
 import * as channelsSql from '../data-access/channels-queries.js';
+import * as officialSql from '../data-access/official-queries.js';
 
 export async function connectInstagram(account: string, manager: SessionManager, body: unknown) {
   const input = object(body);
@@ -54,6 +55,15 @@ export async function reconnectInstagram(account: string, manager: SessionManage
   const channel = channels[0];
   if (!channel || manager.list().find(s => s.id === session)?.channel !== 'instagram')
     throw new ApiError(404, 'session_not_found', 'Sesi Instagram tidak ditemukan');
+  if (channel.provider === 'official') {
+    // Instagram Login resmi: cukup izinnya masih berlaku; token tidak perlu diperiksa ke Meta.
+    const [official] = await officialSql.findOwned(db, [account, channel.ig_account_id]);
+    if (!official[0] || official[0].status !== 'active' || new Date(official[0].expires_at).getTime() < Date.now())
+      throw new ApiError(409, 'instagram_reauth', 'Izin Instagram berakhir; hubungkan Instagram lagi');
+    await channelsSql.updateOfficialStatus(db, ['active', channel.ig_account_id]);
+    if (manager.detail(session).status === 'logged_out') await manager.reconnect(session);
+    return { message: '@' + channel.username + ' terhubung kembali.' };
+  }
   const found = (await listInstagramAccounts(decrypt(channel.api_key))).find(a => a._id === channel.ig_account_id);
   if (!found || found.isActive === false || found.needsReconnection)
     throw new ApiError(
@@ -74,7 +84,7 @@ function usernameOf(value: unknown) {
     .slice(0, 100);
 }
 // Sesi Instagram memakai jatah sesi paket yang sama dengan WhatsApp.
-async function assertSessionSlot(account: string, manager: SessionManager) {
+export async function assertSessionSlot(account: string, manager: SessionManager) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();

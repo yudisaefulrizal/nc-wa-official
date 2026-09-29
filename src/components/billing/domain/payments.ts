@@ -60,7 +60,7 @@ export class Payments {
       configured: Boolean(rows[0]),
       ...(rows[0] ?? {}),
       serverKey: rows[0] ? '********' : null,
-      notificationUrl: (process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068') + '/payments/midtrans/notification',
+      notificationUrl: (process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069') + '/payments/midtrans/notification',
     };
   }
   async configure(actor: string, body: unknown) {

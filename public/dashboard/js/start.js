@@ -27,4 +27,5 @@ show = async () => {
   nav.insertBefore($('docslink'), nav.querySelector('.settings-menu'));
 };
 
-void run(show);
+// Hasil login Instagram (?instagram=…) ditampilkan setelah render pertama selesai, karena run() mengosongkan pesan.
+void run(show).then(showInstagramResult);

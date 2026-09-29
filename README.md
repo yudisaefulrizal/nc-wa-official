@@ -25,7 +25,7 @@ Kebutuhan: Node.js 22+ dan MySQL 8. Konfigurasi ada di `.env`, yang tidak di-com
 ```sh
 npm ci
 npm run migrate      # idempoten; wajib setiap ada perubahan skema
-npm run dev          # http://127.0.0.1:8068
+npm run dev          # http://127.0.0.1:8069
 npm run owner -- email@contoh.id   # jadikan akun terdaftar sebagai pemilik
 ```
 

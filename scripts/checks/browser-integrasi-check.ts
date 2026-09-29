@@ -1,6 +1,6 @@
-// Pemeriksaan browser halaman Integrasi (/dashboard/integrasi): daftar koneksi WhatsApp dan Instagram, filter
-// platform, jatah sesi, peringatan koneksi terputus, Putuskan dan Hubungkan ulang, akun penyedia, pengalihan dari
-// /dashboard/nomor, dan tata letak ponsel. WhatsApp dan Zernio adalah tiruan.
+// Pemeriksaan browser halaman Integrasi (/dashboard/integrasi): kisi kartu koneksi WhatsApp dan Instagram (rantai
+// hijau/abu-abu), jatah sesi, dialog tindakan, Instagram Login resmi, akun penyedia, pengalihan dari
+// /dashboard/nomor, dan tata letak ponsel. WhatsApp, Zernio, dan Meta adalah tiruan.
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import net from 'node:net';
 import assert from 'node:assert/strict';
 import { db } from '../../src/libraries/db.js';
+import { encrypt } from '../../src/libraries/crypto.js';
 import { digest } from '../../src/libraries/security.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { basicWallet } from '../../src/components/billing/domain/plans.js';
@@ -28,6 +29,9 @@ const port = await freePort(),
 const origin = 'http://127.0.0.1:' + port;
 process.env.APP_ORIGIN = origin;
 process.env.ZERNIO_API_URL = 'http://127.0.0.1:' + zernioPort + '/api';
+// Pemeriksaan ini menguji pesan "belum dikonfigurasi", jadi kunci Instagram dari .env dikosongkan.
+delete process.env.INSTAGRAM_APP_ID;
+delete process.env.INSTAGRAM_APP_SECRET;
 process.env.PAYMENT_ENCRYPTION_KEY ??= 'c'.repeat(64);
 const zernio = createServer(async (req, res) => {
   for await (const _ of req);
@@ -84,6 +88,12 @@ try {
     200,
   );
 
+  await db.execute(
+    "INSERT INTO instagram_official(account_id,ig_user_id,username,token,status,expires_at,refreshed_at) VALUES (?,?,?,?,'active',DATE_ADD(NOW(),INTERVAL 5 DAY),NOW())",
+    [account, '17841400000000777', 'resmi.id', encrypt('token-uji')],
+  );
+  // Akun resmi langsung menjadi sesi (seperti setelah login Instagram berhasil).
+  assert.equal((await post('/api/instagram/official/17841400000000777/session', {})).status(), 200);
   const page = await context.newPage(),
     errors: string[] = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -91,38 +101,65 @@ try {
   // Tautan lama halaman Nomor diarahkan ke Integrasi.
   await page.goto(origin + '/dashboard/nomor');
   await page.waitForURL(origin + '/dashboard/integrasi');
-  const list = page.locator('#integrations-list');
-  await list.locator('tbody tr').nth(2).waitFor();
-  assert.equal(await page.locator('#integrations-quota').textContent(), '3 dari 5 terpakai');
+  const grid = page.locator('#integrations-grid');
+  await grid.locator('.integration-tile.connected').nth(2).waitFor();
+  assert.equal(await page.locator('#integrations-quota').textContent(), '4 dari 5 sesi');
   assert.equal(await page.locator('.tabs a[aria-current="page"]').first().textContent(), 'Integrasi');
-  const alert = page.locator('#integrations-alert');
-  await alert.waitFor();
-  assert.match(await alert.innerText(), /1 perlu perhatian/);
-  const instagramRow = list.locator('tr', { hasText: 'ig-senja' });
-  assert.match(await instagramRow.innerText(), /Instagram · Zernio "Pusat"/);
-  assert.match(await instagramRow.innerText(), /@kopisenja\.id/);
-  assert.match(await list.locator('tr', { hasText: 'cabang' }).innerText(), /Terputus/);
+  // Terhubung = rantai hijau menyatu; terputus = rantai abu-abu terputus.
+  const cabang = grid.locator('.integration-tile', { hasText: 'cabang' });
+  assert.match(await cabang.innerText(), /Terputus/);
+  assert.equal(await cabang.locator('svg.chain.off').count(), 1);
+  assert.equal(
+    await grid.locator('.integration-tile', { hasText: '628123456789' }).first().locator('svg.chain.on').count(),
+    1,
+  );
   assert.match(await page.locator('#integrations-providers').innerText(), /Zernio · Pusat/);
+  // Instagram Login resmi: akun yang sudah masuk tampil sebagai kartu, token hampir habis diberi tahu.
+  const official = grid.locator('.integration-tile', { hasText: '@resmi.id' });
+  await official.waitFor();
+  assert.match(await official.innerText(), /Token 5 hari lagi/);
+  assert.equal(await official.locator('svg.chain.on').count(), 1);
   await mkdir(screenshots, { recursive: true });
   await page.screenshot({ path: join(screenshots, 'integrasi-desktop.png'), fullPage: true });
-  // Filter Instagram hanya menampilkan sesi Instagram.
-  await page.locator('#integrations-filters button', { hasText: 'Instagram' }).click();
-  assert.equal(await list.locator('tbody tr').count(), 1);
-  // Putuskan Instagram, lalu hubungkan ulang (akunnya masih aktif di Zernio).
-  await instagramRow.getByRole('button', { name: 'Putuskan' }).click();
-  await instagramRow.getByText('Terputus').waitFor();
-  await page.locator('#integrations-alert', { hasText: '2 perlu perhatian' }).waitFor();
-  await instagramRow.getByRole('button', { name: 'Hubungkan ulang' }).click();
-  await instagramRow.getByText('Terhubung').waitFor();
-  await page.locator('#integrations-alert', { hasText: '1 perlu perhatian' }).waitFor();
+  // Kartu dibuka untuk tindakan; Putuskan Instagram Zernio lalu hubungkan ulang (akunnya masih aktif di Zernio).
+  const zernioTile = grid.locator('.integration-tile', { hasText: 'kopisenja.id' });
+  await zernioTile.click();
+  const dialog = page.locator('#integration-dialog');
+  await dialog.getByRole('button', { name: 'Putuskan' }).click();
+  await grid.locator('.integration-tile.disconnected', { hasText: 'kopisenja.id' }).waitFor();
+  await dialog.getByRole('button', { name: 'Hubungkan ulang' }).click();
+  await grid.locator('.integration-tile.connected', { hasText: 'kopisenja.id' }).waitFor();
+  await dialog.getByRole('button', { name: 'Tutup' }).click();
+  // Akun resmi: Perpanjang butuh Meta, jadi cukup memastikan dialog dan tombolnya ada, lalu Putuskan menghapusnya.
+  await official.click();
+  await dialog.getByRole('button', { name: 'Perpanjang' }).waitFor();
+  await dialog.getByRole('button', { name: 'Putuskan' }).click();
+  await official.waitFor({ state: 'detached' });
+  // Tombol Hubungkan Instagram tanpa konfigurasi Meta menampilkan pesan, bukan error mentah.
+  await page.locator('#integrations-add').click();
+  await page.locator('#addconnection input[value="instagram-official"]').check();
+  await page.locator('#session-submit').click();
+  await page.locator('#message', { hasText: 'belum dikonfigurasi' }).waitFor();
+  // Hasil callback dibaca dari ?instagram= lalu dibersihkan dari alamat.
+  await page.goto(origin + '/dashboard/integrasi?instagram=cancelled');
+  await page.locator('#message', { hasText: 'dibatalkan' }).waitFor();
+  assert.equal(new URL(page.url()).search, '');
   // Tambah koneksi membuka dialog yang sama dengan pilihan WhatsApp atau Instagram.
   await page.locator('#integrations-add').click();
   await page.locator('#addconnection').waitFor({ state: 'visible' });
   await page.locator('#addconnection').getByRole('button', { name: 'Tutup' }).click();
+  // Carousel di Asisten AI: kartu tengah punya tombol Putuskan; setelah diputus tombolnya hilang.
+  await page.goto(origin + '/dashboard/ai');
+  const selected = page.locator('.ai-session-card.selected');
+  await selected.first().waitFor();
+  const disconnect = selected.locator('.ai-session-disconnect').first();
+  await disconnect.waitFor();
+  await disconnect.click();
+  await selected.locator('.ai-session-disconnect').first().waitFor({ state: 'detached' });
+  await page.goto(origin + '/dashboard/integrasi');
   // Tab API key dan webhook di Asisten AI tidak lagi bernama Integrasi.
   assert.equal(await page.locator('[data-ai-tab="integrasi"]').textContent(), 'API & Webhook');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('#integrations-filters button', { hasText: 'Semua' }).click();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   assert.ok(width <= 390, 'Tidak boleh ada gulir horizontal di ponsel: ' + width);
   await page.screenshot({ path: join(screenshots, 'integrasi-mobile.png'), fullPage: true });

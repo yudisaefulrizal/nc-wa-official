@@ -403,3 +403,10 @@ button.ai-session-status {
     grid-template-columns: 1fr;
   }
 }
+
+.ai-session-card .ai-session-disconnect {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  flex: none;
+}

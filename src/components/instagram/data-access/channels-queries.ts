@@ -10,7 +10,7 @@ export function insert(c: Executor, params: SqlValue[]) {
 }
 export function findBySession(c: Executor, params: SqlValue[]) {
   return c.execute<RowDataPacket[]>(
-    'SELECT c.*,z.api_key FROM instagram_channels c JOIN instagram_zernio_accounts z ON z.id=c.zernio_account_id WHERE c.account_id=? AND c.session_id=?',
+    'SELECT c.*,z.api_key FROM instagram_channels c LEFT JOIN instagram_zernio_accounts z ON z.id=c.zernio_account_id WHERE c.account_id=? AND c.session_id=?',
     params,
   );
 }
@@ -43,4 +43,25 @@ export function updateStatus(c: Executor, params: SqlValue[]) {
 }
 export function deleteBySession(c: Executor, params: SqlValue[]) {
   return c.execute<ResultSetHeader>('DELETE FROM instagram_channels WHERE account_id=? AND session_id=?', params);
+}
+export function insertOfficial(c: Executor, params: SqlValue[]) {
+  return c.execute(
+    "INSERT INTO instagram_channels(account_id,session_id,provider,ig_account_id,username) VALUES (?,?,'official',?,?)",
+    params,
+  );
+}
+export function findOfficialByUser(c: Executor, params: SqlValue[]) {
+  return c.execute<RowDataPacket[]>(
+    "SELECT account_id,session_id,status FROM instagram_channels WHERE provider='official' AND ig_account_id=?",
+    params,
+  );
+}
+export function updateOfficialStatus(c: Executor, params: SqlValue[]) {
+  return c.execute("UPDATE instagram_channels SET status=? WHERE provider='official' AND ig_account_id=?", params);
+}
+export function updateOfficialUsername(c: Executor, params: SqlValue[]) {
+  return c.execute("UPDATE instagram_channels SET username=? WHERE provider='official' AND ig_account_id=?", params);
+}
+export function listSessionIds(c: Executor, params: SqlValue[]) {
+  return c.execute<RowDataPacket[]>('SELECT session_id FROM instagram_channels WHERE account_id=?', params);
 }

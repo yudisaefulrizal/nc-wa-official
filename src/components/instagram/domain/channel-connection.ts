@@ -7,8 +7,10 @@ import { db } from '../../../libraries/db.js';
 import { ApiError } from '../../../libraries/errors.js';
 import { log } from '../../../libraries/log.js';
 import type { Connection, Connector, Update } from '../../whatsapp/index.js';
+import { sendOfficialText } from './official-messaging.js';
 import { sendMessage } from './zernio-client.js';
 import * as channelsSql from '../data-access/channels-queries.js';
+import * as officialSql from '../data-access/official-queries.js';
 
 // ID pesan Instagram (mid) bisa lebih panjang dari kolom riwayat chat, jadi diganti hash tetap. Kiriman dan
 // gemanya dari webhook menghasilkan ID yang sama, sehingga kiriman sistem tetap dikenali.
@@ -57,17 +59,28 @@ export function channelConnector(
         const recipient = jid.split('@')[0];
         if (jid.endsWith('@g.us') || !/^[0-9]{5,20}$/.test(recipient))
           throw new ApiError(400, 'invalid_number', 'Tujuan harus ID pengguna Instagram');
-        // Kunci dibaca ulang setiap kirim, supaya kunci yang baru diganti langsung dipakai.
         const [current] = await channelsSql.findBySession(db, [account, id]);
         if (!current[0]) throw new ApiError(409, 'session_not_connected', 'Akun Instagram sudah dilepas');
-        const key = decrypt(current[0].api_key);
         let platformId: string;
-        if ('text' in content) platformId = await sendMessage(key, current[0].ig_account_id, recipient, content.text);
-        else
-          platformId = await sendMessage(key, current[0].ig_account_id, recipient, content.caption ?? '', {
-            path: content.url,
-            filename: content.filename,
-          });
+        if (current[0].provider === 'official') {
+          // Instagram Login resmi: token dibaca ulang setiap kirim; izin yang dicabut atau kedaluwarsa menolak kiriman.
+          if (!('text' in content))
+            throw new ApiError(400, 'unsupported_media', 'Lampiran belum didukung untuk Instagram resmi');
+          const [official] = await officialSql.findOwned(db, [account, current[0].ig_account_id]);
+          const row = official[0];
+          if (!row || row.status !== 'active' || !row.token || new Date(row.expires_at).getTime() < Date.now())
+            throw new ApiError(409, 'session_not_connected', 'Izin Instagram berakhir; hubungkan Instagram lagi');
+          platformId = await sendOfficialText(current[0].ig_account_id, decrypt(row.token), recipient, content.text);
+        } else {
+          // Kunci dibaca ulang setiap kirim, supaya kunci yang baru diganti langsung dipakai.
+          const key = decrypt(current[0].api_key);
+          if ('text' in content) platformId = await sendMessage(key, current[0].ig_account_id, recipient, content.text);
+          else
+            platformId = await sendMessage(key, current[0].ig_account_id, recipient, content.caption ?? '', {
+              path: content.url,
+              filename: content.filename,
+            });
+        }
         const messageId = messageIdOf(platformId);
         // Gema kiriman ini (message.sent) bisa datang lewat webhook; dicatat supaya tidak dianggap balasan manual.
         await registerSystemMessage(id, messageId).catch(() => log(id, 'Gagal mencatat kiriman Instagram'));

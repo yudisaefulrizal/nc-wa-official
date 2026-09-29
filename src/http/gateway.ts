@@ -81,7 +81,7 @@ export function createGateway(
             ),
             store,
           );
-          const files = new MediaStore(join(paths.media, id), process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068');
+          const files = new MediaStore(join(paths.media, id), process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069');
           const events = new EventStream();
           media.set(id, files);
           streams.set(id, events);
@@ -203,7 +203,7 @@ export function createGateway(
           ?.slice(13) ?? '';
       if (
         !['GET', 'HEAD'].includes(req.method) &&
-        req.get('origin') !== (process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068')
+        req.get('origin') !== (process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069')
       ) {
         res.status(403).json({ error: 'invalid_origin' });
         return;
