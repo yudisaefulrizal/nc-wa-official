@@ -1,0 +1,352 @@
+<!-- Editor profil AI: halaman buat profil, kanvas alur dengan inspector/uji coba, struktur koleksi, dan pengaturan. -->
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Editor Profil · NC-WA</title>
+    <script src="/ai-builder/theme.js"></script>
+    <link rel="stylesheet" href="/ai-builder/editor.css" />
+    <script defer src="/ai-builder/common.js"></script>
+    <script defer src="/ai-builder/editor.js"></script>
+    <script defer src="/ai-builder/canvas.js"></script>
+    <script defer src="/ai-builder/inspector.js"></script>
+    <script defer src="/ai-builder/samples.js"></script>
+    <script defer src="/ai-builder/assistant.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-start">
+        <button id="all-profiles" class="icon-btn ghost" aria-label="Kembali ke Profil AI" data-icon="back"></button>
+        <nav class="crumbs" aria-label="Lokasi">
+          <a href="/dashboard/admin/profiles">Profil AI</a><span aria-hidden="true">/</span
+          ><strong id="profile-title">Profil baru</strong>
+        </nav>
+        <span id="revision" class="chip" hidden></span
+        ><span id="unpublished" class="chip warn" hidden>Perubahan belum terbit</span>
+      </div>
+      <nav id="tabs" class="tabs" aria-label="Bagian editor" hidden>
+        <button data-tab="flow">Alur</button><button data-tab="schema">Struktur data</button
+        ><button data-tab="settings">Pengaturan</button>
+      </nav>
+      <button id="theme-toggle" class="icon-btn ghost theme-toggle" type="button"></button>
+      <div id="editor-actions" class="topbar-end" hidden>
+        <span id="dirty" class="save-state" role="status"></span>
+        <button id="issues-button" class="btn warn" popovertarget="issues-menu" hidden></button>
+        <span class="sep" aria-hidden="true"></span>
+        <button id="undo" class="icon-btn ghost" aria-label="Urungkan (Ctrl+Z)" data-icon="undo"></button
+        ><button id="redo" class="icon-btn ghost" aria-label="Ulangi (Ctrl+Shift+Z)" data-icon="redo"></button>
+        <button id="assistant-toggle" class="btn" aria-pressed="false" data-icon="agent">Asisten AI</button>
+        <button id="test-toggle" class="btn" aria-pressed="false" data-icon="play">Uji</button>
+        <button id="publish" class="btn primary">Terbitkan</button>
+      </div>
+    </header>
+    <div id="issues-menu" class="menu" popover>
+      <div class="menu-title">Perlu diperbaiki sebelum terbit</div>
+      <div id="issues-list"></div>
+    </div>
+
+    <main id="library" class="library" hidden>
+      <div class="library-inner">
+        <h1>Buat profil AI</h1>
+        <p class="lead">
+          Profil baru selalu mulai sebagai draft. Klien baru bisa memakainya setelah diterbitkan dan dinyalakan di
+          <a href="/dashboard/admin/profiles">Profil AI</a>.
+        </p>
+        <div class="start-grid">
+          <button id="create" class="start-card">
+            <span class="start-icon accent" data-icon="plus"></span
+            ><span><strong>Mulai kosong</strong><small>Input → Agent → Output</small></span>
+          </button>
+          <button id="import" class="start-card dashed">
+            <span class="start-icon" data-icon="upload"></span
+            ><span><strong>Impor JSON</strong><small>Berkas hasil Ekspor profil</small></span>
+          </button>
+          <button id="paste" class="start-card dashed">
+            <span class="start-icon" data-icon="braces"></span
+            ><span><strong>Tempel JSON</strong><small>Jawaban dari ChatGPT atau Claude</small></span>
+          </button>
+        </div>
+        <section class="card ai-help" aria-labelledby="ai-help-title">
+          <div>
+            <h2 id="ai-help-title">Buat dengan bantuan AI</h2>
+            <ol>
+              <li>
+                Unduh skill, lalu pasang ZIP-nya di Claude (Skills), atau ekstrak dan unggah isinya ke Project/GPT di
+                ChatGPT.
+              </li>
+              <li>Ceritakan usaha Anda: pertanyaan pelanggan, data yang perlu dicari atau dicatat, kapan ke tim.</li>
+              <li>Tempel JSON jawabannya di <strong>Tempel JSON</strong>, lalu uji sebelum diterbitkan.</li>
+            </ol>
+          </div>
+          <a id="skill-download" class="btn primary" href="/api/admin/ai/builder/skill" download data-icon="download"
+            >Unduh skill AI</a
+          >
+        </section>
+      </div>
+    </main>
+
+    <main id="editor" hidden>
+      <section id="flow" class="tab-panel flow">
+        <div id="viewport" tabindex="0" aria-label="Kanvas alur">
+          <div id="world">
+            <svg id="connections" width="4000" height="4000" aria-label="Koneksi antar node"></svg>
+            <div id="nodes"></div>
+          </div>
+          <div class="canvas-top">
+            <button id="add-node" class="btn raised" aria-haspopup="dialog" aria-expanded="false" data-icon="plus">
+              Tambah node<kbd>/</kbd>
+            </button>
+            <div id="node-picker" class="node-picker"></div>
+            <div id="trace-banner" class="canvas-banner" hidden>
+              <span class="dot"></span><span id="trace-banner-text"></span
+              ><button id="clear-trace" class="btn ghost small">Sembunyikan</button>
+            </div>
+          </div>
+          <div id="palette" class="palette" role="dialog" aria-label="Tambah node" hidden>
+            <div class="palette-search">
+              <span data-icon="search"></span
+              ><input
+                id="node-search"
+                placeholder="Cari node… misal: simpan, cabang, gambar"
+                aria-label="Cari node"
+              /><kbd>Esc</kbd>
+            </div>
+            <div id="node-types" class="palette-list"></div>
+            <div class="palette-foot">
+              <span><kbd>↑</kbd> <kbd>↓</kbd> pilih</span><span><kbd>Enter</kbd> tambah</span
+              ><span>atau tarik ke kanvas</span>
+            </div>
+          </div>
+          <div class="canvas-controls">
+            <button id="zoom-out" class="icon-btn ghost" aria-label="Perkecil" data-icon="minus"></button
+            ><button id="fit" class="zoom-label" aria-label="Paskan ke layar">100%</button
+            ><button id="zoom-in" class="icon-btn ghost" aria-label="Perbesar" data-icon="plus"></button
+            ><span class="sep" aria-hidden="true"></span
+            ><button id="layout" class="btn ghost small" data-icon="layout">Rapikan</button>
+          </div>
+          <div id="proposal-bar" class="proposal-bar" role="status" hidden>
+            <span id="proposal-summary"></span><button id="proposal-reject" class="btn small">Tolak</button
+            ><button id="proposal-apply" class="btn small primary">Terapkan</button>
+          </div>
+          <div id="minimap" aria-hidden="true"></div>
+          <div id="connection-hint" class="canvas-hint" role="status"></div>
+        </div>
+        <aside id="side" class="side">
+          <div id="inspector" class="inspector"></div>
+          <div id="tester" class="tester" hidden>
+            <div class="tester-head">
+              <div>
+                <strong>Uji coba</strong>
+                <small>Memakai draft saat ini · tidak dikirim ke WhatsApp</small>
+              </div>
+              <button id="samples-toggle" class="btn ghost small" aria-expanded="false" data-icon="data">
+                Data contoh</button
+              ><button
+                id="reset-test"
+                class="icon-btn ghost"
+                aria-label="Mulai ulang percakapan"
+                data-icon="restart"
+              ></button
+              ><button id="close-test" class="icon-btn ghost" aria-label="Tutup uji coba" data-icon="close"></button>
+            </div>
+            <div id="samples-box" class="samples" hidden>
+              <label
+                >Data selama pengujian (JSON)<textarea
+                  id="samples"
+                  rows="7"
+                  spellcheck="false"
+                  placeholder='{"produk":[{"nama":"Basic","biaya":150000}]}'
+                >
+{}</textarea>
+              </label>
+              <p class="hint">
+                Diawali dari Data contoh di Struktur data dan ikut berubah selama pengujian ini; Mulai ulang
+                mengembalikannya. Record koleksi milik pelanggan tanpa "customer" dianggap milik pelanggan simulasi.
+              </p>
+            </div>
+            <div id="chat" class="chat" aria-live="polite">
+              <p class="chat-note">Pelanggan simulasi · <span class="mono">628000000001</span></p>
+            </div>
+            <form id="test-form" class="composer">
+              <textarea
+                id="test-message"
+                required
+                rows="2"
+                placeholder="Tulis pesan sebagai pelanggan…"
+                aria-label="Pesan pengujian"
+              ></textarea>
+              <div id="attachment-box" class="attachment-row" hidden>
+                <label
+                  >Nama file lampiran<input id="test-media-name" maxlength="255" placeholder="bukti-transfer.jpg"
+                /></label>
+                <label
+                  >Jenis<select id="test-media-type">
+                    <option value="image">Gambar</option>
+                    <option value="document">Dokumen</option>
+                  </select></label
+                >
+              </div>
+              <div class="composer-actions">
+                <button type="button" id="attachment-toggle" class="btn ghost small" data-icon="clip">
+                  Lampiran simulasi</button
+                ><span class="kbd-hint"><kbd>Ctrl</kbd> <kbd>Enter</kbd></span
+                ><button type="button" id="stop-test" class="btn small" hidden>Hentikan</button
+                ><button class="btn primary small" id="run-test">Kirim</button>
+              </div>
+            </form>
+          </div>
+          <div id="assistant" class="tester assistant" hidden>
+            <div class="tester-head">
+              <div>
+                <strong>Asisten AI</strong>
+                <small>Penyedia AI NC-WA · tier Cerdas · membaca draft yang sedang dibuka</small>
+              </div>
+              <button id="assistant-new" class="btn ghost small" data-icon="restart">Percakapan baru</button
+              ><button
+                id="close-assistant"
+                class="icon-btn ghost"
+                aria-label="Tutup Asisten AI"
+                data-icon="close"
+              ></button>
+            </div>
+            <div id="assistant-chat" class="chat" aria-live="polite">
+              <p class="chat-note">
+                Minta perubahan atau tanyakan alurnya. Usulan tampil di kanvas dulu; menerbitkan tetap manual.
+              </p>
+            </div>
+            <form id="assistant-form" class="composer">
+              <div class="assistant-prompts">
+                <button
+                  type="button"
+                  class="chip-btn"
+                  data-assistant-prompt="Periksa profil ini dan jelaskan masalah atau kelemahannya."
+                >
+                  Periksa profil ini</button
+                ><button
+                  type="button"
+                  class="chip-btn"
+                  data-assistant-prompt="Jelaskan alur profil ini secara singkat."
+                >
+                  Jelaskan alurnya</button
+                ><button
+                  type="button"
+                  class="chip-btn"
+                  data-assistant-prompt="Tambahkan Agent Sapaan dan Penutup bila belum ada."
+                >
+                  Sapaan &amp; Penutup
+                </button>
+              </div>
+              <textarea
+                id="assistant-message"
+                required
+                rows="3"
+                maxlength="4000"
+                placeholder="Minta perubahan, misalnya: tambahkan node Buat file Markdown untuk ringkasan pesanan…"
+                aria-label="Perintah untuk Asisten AI"
+              ></textarea>
+              <div class="composer-actions">
+                <span class="kbd-hint"><kbd>Enter</kbd> kirim · <kbd>Shift</kbd> <kbd>Enter</kbd> baris baru</span
+                ><button type="button" id="assistant-stop" class="btn small" hidden>Hentikan</button
+                ><button class="btn primary small" id="assistant-send">Kirim</button>
+              </div>
+            </form>
+          </div>
+        </aside>
+      </section>
+
+      <section id="schema" class="tab-panel schema" hidden>
+        <aside class="collection-list" aria-label="Koleksi">
+          <div class="list-head">
+            <strong>Koleksi</strong
+            ><button id="add-collection" class="btn ghost small accent-text" data-icon="plus">Koleksi</button>
+          </div>
+          <div id="collection-list"></div>
+          <button id="samples-all" class="btn small samples-all" data-icon="agent">Buat data contoh</button>
+          <p class="list-note">
+            Isi data sungguhan dikelola tiap akun di dashboard. Data contoh (semua koleksi sekaligus, relasi saling
+            cocok) hanya untuk Uji di editor.
+          </p>
+        </aside>
+        <div id="collections" class="collection-detail"></div>
+      </section>
+
+      <section id="settings" class="tab-panel settings" hidden>
+        <div class="settings-col">
+          <section class="card">
+            <h2>Identitas</h2>
+            <label>Nama profil<input id="profile-name" maxlength="100" required /></label>
+            <label
+              >Deskripsi untuk klien<textarea id="profile-description" rows="3" maxlength="1000"></textarea>
+              <small class="hint">Tampil di pilihan profil pada dashboard klien.</small></label
+            >
+          </section>
+          <section class="card">
+            <h2>Pemeriksaan sebelum terbit</h2>
+            <div id="issues"></div>
+          </section>
+          <section class="card">
+            <h2>Berkas</h2>
+            <div class="row">
+              <button id="export" class="btn" data-icon="download">Ekspor JSON</button
+              ><button id="duplicate" class="btn" data-icon="copy">Salin jadi profil baru</button
+              ><a class="btn" href="/api/admin/ai/builder/skill" download data-icon="download">Unduh skill AI</a>
+            </div>
+            <p class="hint">
+              Ubah dengan bantuan AI: berikan skill dan hasil Ekspor JSON ke ChatGPT atau Claude, lalu tempel jawabannya
+              di <a href="/dashboard/admin/ai-builder">Buat profil → Tempel JSON</a>. Hasilnya menjadi draft baru.
+            </p>
+            <div class="danger-row">
+              <div>
+                <strong>Hapus profil</strong>
+                <small id="delete-note" class="hint">Versi terbit dan draft ikut dihapus.</small>
+              </div>
+              <button id="delete-profile" class="btn danger">Hapus profil</button>
+            </div>
+          </section>
+        </div>
+        <div class="settings-col side-col">
+          <section class="card">
+            <h2>Status di klien</h2>
+            <div id="client-status" class="stats"></div>
+            <p class="hint">
+              Klien memakai versi terbit. Nyalakan atau matikan profil dari halaman
+              <a href="/dashboard/admin/profiles">Profil AI</a>.
+            </p>
+          </section>
+          <section class="card">
+            <h2>Riwayat versi</h2>
+            <div id="versions" class="timeline"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+    <input id="import-file" type="file" accept="application/json,.json" hidden />
+    <dialog id="paste-dialog" class="paste-dialog">
+      <h2>Tempel JSON profil</h2>
+      <p class="hint">Tempel seluruh jawaban AI; blok ```json dan teks di sekitarnya dibuang otomatis.</p>
+      <textarea id="paste-json" rows="12" spellcheck="false" aria-label="JSON profil"></textarea>
+      <p id="paste-error" class="error-text" role="alert" hidden></p>
+      <div class="row end">
+        <button id="cancel-paste" class="btn">Batal</button
+        ><button id="confirm-paste" class="btn primary">Lanjut</button>
+      </div>
+    </dialog>
+    <dialog id="import-preview">
+      <h2>Impor profil</h2>
+      <div id="import-summary"></div>
+      <p class="hint">
+        Hanya definisi profil, alur, dan struktur koleksi yang diimpor. Profil baru dimulai sebagai draft.
+      </p>
+      <div class="row end">
+        <button id="cancel-import" class="btn">Batal</button
+        ><button id="confirm-import" class="btn primary">Buat profil</button>
+      </div>
+    </dialog>
+    <div id="variable-menu" class="menu variable-menu" popover>
+      <input id="variable-search" placeholder="Cari variabel…" aria-label="Cari variabel" />
+      <div id="variable-list" class="variable-list"></div>
+    </div>
+    <div id="notice" role="status" popover="manual"></div>
+  </body>
+</html>

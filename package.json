@@ -1,0 +1,46 @@
+{
+  "name": "nc-wa-saas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "build": "tsc",
+    "check": "tsc --noEmit && tsx scripts/checks/structure.ts && prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"public/**/*.{js,css,html}\"",
+    "format": "prettier --write",
+    "start": "node --env-file=.env dist/server.js",
+    "migrate": "tsx --env-file=.env src/migrate.ts",
+    "test": "tsx --env-file=.env --test 'test/**/*.test.ts'",
+    "test:isolated": "tsx scripts/test/test-all.ts",
+    "owner": "tsx --env-file=.env scripts/tools/owner.ts",
+    "test:browser": "tsx --env-file=.env scripts/checks/browser-check.ts",
+    "backup": "tsx --env-file=.env scripts/tools/backup.ts",
+    "bench": "tsx --env-file=.env scripts/tools/bench.ts",
+    "setup:secrets": "tsx scripts/tools/setup-secrets.ts",
+    "test:restore": "tsx scripts/tools/restore-check.ts"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "ipaddr.js": "^2.5.0",
+    "mysql2": "^3.24.4",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.5.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/supertest": "^7.2.1",
+    "playwright": "^1.63.0",
+    "prettier": "3.9.9",
+    "supertest": "^7.2.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

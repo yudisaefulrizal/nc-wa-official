@@ -1,0 +1,221 @@
+// Memanggil provider AI (SumoPod, OpenRouter, atau yang kompatibel OpenAI): konfigurasi, bentuk request, dan
+// pembatasan ukuran jawaban.
+import { isJevModel, type ModelRole, type ModelTier, type AITraceEvent } from './pipeline/models.js';
+import { request } from 'node:https';
+import { decrypt } from '../../../libraries/crypto.js';
+import { validatePublicUrl } from '../../../libraries/download.js';
+import { resolve } from 'node:path';
+import { fail } from './input-validation.js';
+
+export type AIMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+export type AIProvider = 'sumopod' | 'compatible' | 'openrouter';
+export interface DecisionRequest {
+  model: string;
+  state: Record<string, unknown>;
+  questions: Record<string, { type: 'choice' | 'noul'; instructions: string; criteria: Record<string, string> }>;
+}
+// Pemakaian satu panggilan menurut penyedia: token masuk/keluar (token berpikir termasuk di keluar) dan biaya dalam
+// mata uang penyedia (OpenRouter: usage.cost; Sumopod/LiteLLM: header x-litellm-response-cost). Tidak ada = null.
+export interface AIUsage {
+  input: number;
+  output: number;
+  reasoning: number;
+  cost: number | null;
+}
+export function readUsage(data: Record<string, unknown>, headers: Record<string, unknown>): AIUsage | null {
+  const u = data.usage as Record<string, unknown> | undefined;
+  if (!u || typeof u !== 'object') return null;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v));
+  const input = num(u.prompt_tokens ?? u.input_tokens),
+    output = num(u.completion_tokens ?? u.output_tokens);
+  if (!Number.isFinite(input) || !Number.isFinite(output)) return null;
+  const details = u.completion_tokens_details as Record<string, unknown> | undefined;
+  const cost = num(u.cost ?? headers['x-litellm-response-cost']);
+  return {
+    input,
+    output,
+    reasoning: Number.isFinite(num(details?.reasoning_tokens)) ? num(details?.reasoning_tokens) : 0,
+    cost: Number.isFinite(cost) ? cost : null,
+  };
+}
+export interface AIConfig {
+  graph_context?: string | null;
+  trace_node?: string;
+  signal?: AbortSignal;
+  // Dipanggil sebelum setiap node Data dijalankan; runtime WhatsApp melempar ai_cancelled bila percakapan dijeda,
+  // diambil alih admin, atau asistennya berubah, supaya tidak ada record yang ditulis setelah itu.
+  checkpoint?: () => Promise<void>;
+  onTrace?: (event: AITraceEvent) => void;
+  model_cheap?: string;
+  model_medium?: string;
+  model_smart?: string;
+  model_structured?: string;
+  model_decision?: string;
+  tier_profiles?: Partial<
+    Record<ModelTier, { id: string; provider: AIProvider; endpoint: string; secret: string; model: string }>
+  >;
+  call_role?: ModelRole;
+  response_format?: Record<string, unknown>;
+  decision_request?: DecisionRequest;
+  provider: AIProvider;
+  endpoint: string;
+  model: string;
+  secret: string;
+  input_rate: number;
+  output_rate: number;
+  memory_limit: number;
+  context_memory_limit: number;
+  trace_enabled: boolean;
+  credit_price: number;
+  tidy_prompt?: string;
+  // Asisten Editor profil menulis ulang satu profil utuh: butuh jawaban lebih panjang dan waktu lebih lama dari
+  // balasan pelanggan. Tanpa nilai ini dipakai batas bawaan (2048 token, 45 detik).
+  max_tokens?: number;
+  timeout_ms?: number;
+  // Dipanggil sekali per jawaban penyedia yang menyebut pemakaiannya (dipakai Uji di editor untuk token per node).
+  onUsage?: (usage: AIUsage) => void;
+}
+export const defaults: AIConfig = {
+  provider: 'compatible',
+  endpoint: 'https://ai.sumopod.com/v1/chat/completions',
+  model: 'deepseek-v4-flash',
+  secret: '',
+  input_rate: 1,
+  output_rate: 2,
+  memory_limit: 60,
+  context_memory_limit: 6,
+  trace_enabled: false,
+  credit_price: 0,
+  tidy_prompt: '',
+};
+export function provider(value: unknown): AIProvider {
+  if (value === 'sumopod' || value === 'compatible' || value === 'openrouter') return value;
+  throw fail('Provider AI tidak valid');
+}
+export function chatEndpoint(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw fail('Endpoint tidak valid');
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash)
+    throw fail('Endpoint wajib HTTPS tanpa kredensial, query, atau fragmen');
+  url.pathname = url.pathname.replace(/\/$/, '');
+  if (url.pathname === '' || url.pathname === '/') url.pathname = '/v1/chat/completions';
+  else if (url.pathname === '/v1') url.pathname += '/chat/completions';
+  else if (!url.pathname.endsWith('/chat/completions')) throw fail('Gunakan endpoint Chat Completions');
+  return url.href;
+}
+export type AITransport = (config: AIConfig, messages: AIMessage[], maxWords: number) => Promise<string>;
+export function jevConnectionProbe(model: string): DecisionRequest {
+  return {
+    model,
+    state: { pesan: 'Halo' },
+    questions: {
+      specialist: {
+        type: 'choice',
+        instructions: 'Pilih kategori pesan.',
+        criteria: { pembuka: 'Sapaan atau salam.', lainnya: 'Pesan lain.' },
+      },
+    },
+  };
+}
+// DNS diperiksa dan dikunci. Redirect tidak pernah diikuti karena membawa kredensial provider.
+export function aiRequestPayload(config: AIConfig, messages: AIMessage[]) {
+  return {
+    model: config.model,
+    messages: [...messages],
+    stream: false,
+    max_tokens: config.max_tokens ?? 2048,
+    ...(config.response_format ? { response_format: config.response_format } : {}),
+  };
+}
+export const callAI: AITransport = async (config, messages, maxWords) => {
+  const decision = config.decision_request;
+  if (isJevModel(config.model) && !decision) throw Error('ai_jev_requires_decision');
+  if (
+    decision &&
+    (config.call_role !== 'router' ||
+      config.provider !== 'openrouter' ||
+      new URL(config.endpoint).hostname !== 'openrouter.ai')
+  )
+    throw Error('ai_jev_requires_openrouter');
+  const { url, addresses } = await validatePublicUrl(
+    decision ? 'https://openrouter.ai/api/alpha/decisions' : config.endpoint,
+  );
+  const payload = JSON.stringify(decision ?? aiRequestPayload(config, messages));
+  return new Promise<string>((resolve, reject) => {
+    const openRouterHeaders =
+      config.provider === 'openrouter'
+        ? {
+            'X-OpenRouter-Title': 'NC-WA',
+            ...(process.env.APP_ORIGIN ? { 'HTTP-Referer': process.env.APP_ORIGIN } : {}),
+          }
+        : {};
+    const req = request(
+      url,
+      {
+        method: 'POST',
+        agent: false,
+        signal: config.signal
+          ? AbortSignal.any([config.signal, AbortSignal.timeout(config.timeout_ms ?? 45000)])
+          : AbortSignal.timeout(config.timeout_ms ?? 45000),
+        headers: {
+          Authorization: 'Bearer ' + decrypt(config.secret),
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          ...openRouterHeaders,
+        },
+        lookup: (_hostname, options, callback) => {
+          if (options.all) callback(null, addresses);
+          else callback(null, addresses[0].address, addresses[0].family);
+        },
+      },
+      res => {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        res.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > 262144) {
+            res.destroy(new Error('ai_response_limit'));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        res.on('error', error =>
+          reject(new Error(error.message === 'ai_response_limit' ? 'ai_response_limit' : 'ai_provider_failed')),
+        );
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error('ai_provider_http_' + res.statusCode));
+            return;
+          }
+          try {
+            const data = JSON.parse(Buffer.concat(chunks).toString());
+            const usage = config.onUsage && readUsage(data, res.headers);
+            if (usage) config.onUsage!(usage);
+            if (decision) {
+              if (!data.answers || typeof data.answers !== 'object' || Array.isArray(data.answers)) {
+                reject(new Error('ai_provider_empty_content'));
+                return;
+              }
+              resolve(JSON.stringify(data.answers));
+              return;
+            }
+            const content = data.choices?.[0]?.message?.content;
+            if (typeof content !== 'string' || !content.trim()) {
+              reject(new Error('ai_provider_empty_content'));
+              return;
+            }
+            resolve(content.trim());
+          } catch {
+            reject(new Error('ai_provider_invalid_json'));
+          }
+        });
+      },
+    );
+    req.on('error', () => reject(new Error('ai_provider_failed')));
+    req.end(payload);
+  });
+};

@@ -1,0 +1,273 @@
+// Pemeriksaan browser Tahap 2–4 pada 1280/390 px: node Ekstrak, Set / Hitung, Terima media, Kirim media, dan Buat file, tipe field baru dengan nilai bawaan dan
+// unik, simpan-buka ulang, serta formulir record klien (jam, tanggal-jam, pilihan ganda, telepon, unggah file).
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { mkdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import net from 'node:net';
+import { db } from '../../src/libraries/db.js';
+import { digest } from '../../src/libraries/security.js';
+import { storagePaths } from '../../src/libraries/storage.js';
+import { screenshots } from './screenshots.js';
+import { ai } from '../../src/components/ai/domain/service.js';
+import { setProfileEnabled } from '../../src/components/ai/domain/profiles/registry.js';
+import * as store from '../../src/components/ai/domain/builder/store.js';
+import { blankDefinition } from '../../src/components/ai/domain/builder/definition.js';
+import { catalogGraph } from '../../test/components/ai/graph-fixture.js';
+const owner = randomUUID(),
+  client = randomUUID(),
+  ownerToken = randomUUID(),
+  clientToken = randomUUID();
+const slot = net.createServer();
+await new Promise<void>(r => slot.listen(0, '127.0.0.1', r));
+const port = (slot.address() as net.AddressInfo).port;
+await new Promise<void>(r => slot.close(() => r()));
+const origin = 'http://127.0.0.1:' + port;
+process.env.APP_ORIGIN = origin;
+process.env.TRUST_PROXY_HOPS = '1';
+const { createApp } = await import('../../src/http/app.js');
+const server = createApp().listen(port, '127.0.0.1');
+const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(200, 7)]);
+let browser;
+const ids: string[] = [];
+try {
+  for (const [id, role, token] of [
+    [owner, 'owner', ownerToken],
+    [client, 'user', clientToken],
+  ]) {
+    await db.execute('INSERT INTO accounts(id,email,password_hash,role) VALUES (?,?,?,?)', [
+      id,
+      id + '@test.invalid',
+      'unused',
+      role,
+    ]);
+    await db.execute('INSERT INTO login_sessions VALUES (?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 HOUR))', [
+      digest(token),
+      id,
+    ]);
+  }
+  const d = blankDefinition('Pendaftaran santri');
+  const field = (id: string, type: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    label: id,
+    type,
+    required: false,
+    options: [],
+    collection: '',
+    ...extra,
+  });
+  d.collections = [
+    {
+      id: 'daftar',
+      name: 'Pendaftaran',
+      owner: 'shared',
+      fields: [
+        field('nama', 'text', { required: true }),
+        field('jam', 'time'),
+        field('mulai', 'datetime'),
+        field('minat', 'multichoice', { options: ['Tahfidz', 'Bahasa'], default: ['Tahfidz'] }),
+        field('hp', 'phone', { unique: true }),
+        field('foto', 'file'),
+      ],
+    } as never,
+  ];
+  const g = await store.createGraph(owner, d);
+  ids.push(g.id);
+  await store.saveGraph(owner, g.id, { revision: g.revision }, true);
+  await setProfileEnabled(owner, g.id, true);
+
+  browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH });
+  await mkdir(screenshots, { recursive: true });
+  for (const width of [1280, 390]) {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      extraHTTPHeaders: { 'X-Forwarded-For': '10.3.0.' + (width === 1280 ? 1 : 2) },
+    });
+    await context.addCookies([{ name: 'ncwa_session', value: ownerToken, url: origin }]);
+    const page = await context.newPage(),
+      errors: string[] = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('dialog', d => void d.accept());
+    // Profil uji berbentuk katalog (Router → Layanan/Sapaan, koleksi Produk) dibuat lewat API, lalu dibuka di editor.
+    const created = await (
+      await context.request.post(origin + '/api/admin/ai/builder', {
+        data: catalogGraph(),
+        headers: { Origin: origin },
+      })
+    ).json();
+    await page.goto(origin + '/dashboard/admin/ai-builder?profile=' + created.id);
+    await page.locator('#editor').waitFor();
+    const id = new URL(page.url()).searchParams.get('profile')!;
+    ids.push(id);
+
+    // Struktur data: field baru bertipe Pilihan ganda dengan nilai bawaan, dan Telepon yang unik.
+    await page.getByRole('button', { name: 'Struktur data', exact: true }).click();
+    const produk = page.locator('#collections .collection').first();
+    await produk.getByRole('button', { name: 'Tambah field' }).click();
+    const added = produk.locator('.field-grid').last();
+    await added.getByLabel('Nama field', { exact: true }).fill('Kategori');
+    await added.getByLabel('Tipe', { exact: true }).selectOption('multichoice');
+    await produk.locator('.field-grid').last().getByLabel('Opsi (pisahkan koma)').fill('Reguler, Promo');
+    await produk.locator('.field-grid').last().getByLabel('Nilai bawaan (pisahkan koma)').fill('Reguler');
+    await produk.getByRole('button', { name: 'Tambah field' }).click();
+    const phone = produk.locator('.field-grid').last();
+    await phone.getByLabel('Nama field', { exact: true }).fill('Kontak');
+    await phone.getByLabel('Tipe', { exact: true }).selectOption('phone');
+    await produk.locator('.field-grid').last().getByLabel('Unik', { exact: true }).check();
+
+    // Alur: Ekstrak dengan field dari koleksi, lalu Set / Hitung dengan operasi Kali.
+    await page.getByRole('button', { name: 'Alur', exact: true }).click();
+    const inspector = page.locator('#inspector');
+    await page.locator('#add-node').click();
+    await page.locator('#node-types').getByRole('button', { name: 'Ekstrak', exact: true }).click();
+    await inspector.getByLabel('Tipe', { exact: true }).selectOption('choice');
+    await inspector.getByLabel('Opsi (pisahkan koma)', { exact: true }).fill('Gigi, Umum');
+    await inspector.getByLabel('Salin field dari koleksi', { exact: true }).selectOption('produk');
+    await inspector.getByLabel('Petunjuk untuk AI', { exact: true }).first().fill('Nama layanan');
+    await page.locator('#add-node').click();
+    await page.locator('#node-types').getByRole('button', { name: 'Set / Hitung', exact: true }).click();
+    await inspector.getByLabel('Nama hasil', { exact: true }).fill('total');
+    await inspector.getByLabel('Operasi', { exact: true }).selectOption('multiply');
+    await inspector.getByLabel('Angka', { exact: true }).fill('150000');
+    await inspector.getByLabel('Dikali', { exact: true }).fill('2');
+    await inspector.getByRole('button', { name: '＋ Langkah' }).click();
+    await inspector.getByLabel('Operasi', { exact: true }).last().selectOption('format_rupiah');
+    await inspector.getByLabel('Angka', { exact: true }).last().fill('{{input.message}}');
+
+    // Kirim media: file dari variabel, keterangan, sesudah jawaban, sebagai dokumen.
+    await page.locator('#add-node').click();
+    await page.locator('#node-types').getByRole('button', { name: 'Kirim media', exact: true }).click();
+    await inspector.getByLabel('File yang dikirim', { exact: true }).fill('{{input.message}}');
+    await inspector.getByLabel('Keterangan (opsional)', { exact: true }).fill('Brosur terbaru');
+    await inspector.getByLabel('Waktu kirim', { exact: true }).selectOption('after');
+    await inspector.getByLabel('Kirim sebagai', { exact: true }).selectOption('document');
+    // Terima media: hanya gambar.
+    await page.locator('#add-node').click();
+    await page.locator('#node-types').getByRole('button', { name: 'Terima media', exact: true }).click();
+    await inspector.getByLabel(/^Dokumen \(PDF/).uncheck();
+    // Buat file: Markdown dari variabel; template JSON yang tidak valid ditandai sebelum diperbaiki.
+    await page.locator('#add-node').click();
+    await page.locator('#node-types').getByRole('button', { name: 'Buat file Markdown', exact: true }).click();
+    await inspector.getByLabel('Nama file', { exact: true }).fill('artikel-{{system.today}}');
+    await inspector.getByLabel('Isi Markdown', { exact: true }).fill('# Artikel\n\n{{input.message}}');
+    await page.locator('#add-node').click();
+    await page.locator('#node-types').getByRole('button', { name: 'Buat file JSON', exact: true }).click();
+    await inspector.getByLabel('Template JSON', { exact: true }).fill('{"pesan": {{input.message}}}');
+    const jsonIssue = page.locator('#issues-list').getByText(/Template JSON tidak valid/);
+    await jsonIssue.waitFor({ state: 'attached' });
+    await inspector.getByLabel('Template JSON', { exact: true }).fill('{"pesan": "{{input.message}}"}');
+    await jsonIssue.waitFor({ state: 'detached' });
+    await page.locator('#dirty').filter({ hasText: 'Tersimpan' }).waitFor();
+    await page.reload();
+    await page.locator('#editor').waitFor();
+    const definition = await (await context.request.get(origin + '/api/admin/ai/builder/' + id + '/export')).json();
+    const extract = definition.nodes.find((n: any) => n.type === 'extract');
+    assert.equal(extract.tier, 'structured');
+    assert.deepEqual(extract.fields[0], {
+      id: 'nama',
+      label: 'Nama',
+      type: 'choice',
+      required: true,
+      hint: 'Nama layanan',
+      options: ['Gigi', 'Umum'],
+    });
+    assert.ok(extract.fields.some((f: any) => f.id === 'biaya' && f.type === 'number'));
+    const computeNode = definition.nodes.find((n: any) => n.type === 'compute');
+    assert.deepEqual(computeNode.steps[0], { name: 'total', op: 'multiply', args: ['150000', '2'] });
+    assert.equal(computeNode.steps[1].op, 'format_rupiah');
+    assert.deepEqual(definition.nodes.find((n: any) => n.type === 'receive').accept, ['image']);
+    const media = definition.nodes.find((n: any) => n.type === 'media');
+    assert.deepEqual(
+      [media.value, media.caption, media.send_when, media.media_as],
+      ['{{input.message}}', 'Brosur terbaru', 'after', 'document'],
+    );
+    const md = definition.nodes.find((n: any) => n.type === 'file_md');
+    assert.deepEqual([md.filename, md.value], ['artikel-{{system.today}}', '# Artikel\n\n{{input.message}}']);
+    assert.equal(definition.nodes.find((n: any) => n.type === 'file_json').value, '{"pesan": "{{input.message}}"}');
+    const produkDef = definition.collections.find((c: any) => c.id === 'produk');
+    assert.deepEqual(produkDef.fields.find((f: any) => f.id === 'kategori').default, ['Reguler']);
+    assert.equal(produkDef.fields.find((f: any) => f.id === 'kontak').unique, true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+    if (width === 390) await page.locator('#node-picker select').selectOption(computeNode.id);
+    else await page.locator(`[data-node="${computeNode.id}"] .node-heading`).click();
+    await inspector.getByLabel('Nama hasil', { exact: true }).first().waitFor();
+    await page.screenshot({ path: join(screenshots, 'ai-builder-compute-' + width + '.png'), fullPage: true });
+
+    // Klien: formulir record dengan tipe baru dan unggahan file.
+    const data = await ai.createDataProfile(client, { profile_type: g.id, name: 'Santri ' + width });
+    await context.addCookies([{ name: 'ncwa_session', value: clientToken, url: origin }]);
+    const openData = async () => {
+      await page.goto(origin + '/dashboard/ai-data?profile=' + data.id);
+      await page
+        .locator('#ai-manage-name')
+        .filter({ hasText: 'Santri ' + width })
+        .waitFor();
+      await page.locator('#ai-records-title').waitFor();
+    };
+    await openData();
+    // Tabel inline: fokus sel baris baru, Enter membuka editor, Tab/Enter menyimpan isinya.
+    const newCell = (col: string) => page.locator(`#ai-records tr.ai-grid-new td[data-col="${col}"]`);
+    const fillCell = async (col: string, value: string, key = 'Tab') => {
+      await newCell(col).focus();
+      await page.keyboard.press('Enter');
+      await newCell(col).locator('input').fill(value);
+      await newCell(col).locator('input').press(key);
+    };
+    // Nilai bawaan multi pilihan langsung terisi di baris baru.
+    await newCell('minat').getByText('Tahfidz', { exact: true }).waitFor();
+    const chooser = page.waitForEvent('filechooser');
+    await newCell('foto').getByRole('button', { name: '+ Unggah' }).click();
+    await (await chooser).setFiles({ name: 'pas foto.png', mimeType: 'image/png', buffer: png });
+    await newCell('foto').getByText('pas foto.png').waitFor();
+    await fillCell('nama', 'Ahmad');
+    await fillCell('jam', '07:30');
+    await fillCell('mulai', '2026-10-01T08:00');
+    // Multi pilihan memakai popover centang.
+    await newCell('minat').focus();
+    await page.keyboard.press('Enter');
+    await page.locator('.ai-grid-pop').getByLabel('Bahasa').check();
+    await page.locator('.ai-grid-pop').getByRole('button', { name: 'Simpan' }).click();
+    await fillCell('hp', '0812-3456-789', 'Enter');
+    await page.locator('#ai-records tr[data-row="0"]:not(.ai-grid-new)').waitFor();
+    await openData();
+    const link = page.locator('#ai-records a', { hasText: 'pas foto.png' });
+    await link.waitFor();
+    const saved = page.locator('#ai-records tr[data-row="0"] td[data-col="minat"]');
+    await saved.getByText('Tahfidz', { exact: true }).waitFor();
+    await saved.getByText('Bahasa', { exact: true }).waitFor();
+    await page.locator('#ai-records').getByText('628123456789', { exact: true }).waitFor();
+    await page.locator('#ai-records').getByText('2026-10-01 08:00', { exact: true }).waitFor();
+    const file = await context.request.get(origin + (await link.getAttribute('href')));
+    assert.equal(file.status(), 200);
+    assert.deepEqual(Buffer.from(await file.body()), png);
+    // Nomor unik yang sama ditolak dengan pesan yang jelas.
+    await fillCell('nama', 'Budi');
+    await fillCell('hp', '628123456789', 'Enter');
+    await page.locator('#ai-grid-note').filter({ hasText: 'sudah dipakai record lain' }).waitFor();
+    await newCell('hp').and(page.locator('.invalid')).waitFor();
+    // Field wajib dicek per sel sebelum dikirim.
+    await fillCell('nama', '', 'Enter');
+    await page.locator('#ai-grid-note').filter({ hasText: 'nama wajib diisi' }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+    await page.screenshot({ path: join(screenshots, 'ai-builder-field-types-' + width + '.png'), fullPage: true });
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  console.log(
+    'Tahap 2–4: Ekstrak, Set / Hitung, Terima media, Kirim media, Buat file, tipe field baru, nilai bawaan, unik, dan unggah file lulus pada 1280 dan 390px.',
+  );
+} finally {
+  await browser?.close();
+  await new Promise<void>(r => server.close(() => r()));
+  for (const id of [owner, client]) {
+    await db.execute('DELETE FROM audit_events WHERE account_id=?', [id]);
+    await db.execute('DELETE FROM accounts WHERE id=?', [id]);
+    await rm(join(storagePaths().recordFiles, id), { recursive: true, force: true });
+  }
+  for (const id of ids) {
+    await db.execute('DELETE FROM ai_graph_profiles WHERE id=?', [id]);
+    await db.execute('DELETE FROM ai_profile_types WHERE id=?', [id]);
+  }
+  await db.end();
+}

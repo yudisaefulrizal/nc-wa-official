@@ -1,0 +1,405 @@
+/* Asisten AI: pemilih sesi berada di luar wizard; sisanya menjadi tab. */
+#ai-session-picker {
+  margin-bottom: 18px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.ai-session-carousel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+.ai-session-cards {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+}
+.ai-session-track {
+  min-width: 0;
+}
+.ai-session-track {
+  display: flex;
+  gap: 12px;
+  transition: transform 0.35s ease;
+}
+.ai-session-card {
+  flex: 0 0 var(--ai-card-width, 200px);
+  width: var(--ai-card-width, 200px);
+  box-sizing: border-box;
+  border: 1.5px solid #e1e9e8;
+  border-radius: 13px;
+  background: #fff;
+  padding: 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    opacity 0.3s;
+}
+.ai-session-card:hover {
+  border-color: #bcdccd;
+}
+.ai-session-card:focus-visible {
+  outline: 3px solid #73bda4;
+  outline-offset: 2px;
+}
+.ai-session-card.selected {
+  border-color: #09976a;
+  box-shadow: 0 0 0 3px #09976a1a;
+}
+.ai-session-card.ai-session-depth-1,
+.ai-session-card.ai-session-depth-2 {
+  opacity: 0.35;
+}
+.ai-session-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ai-session-status {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  background-image: none;
+}
+button.ai-session-status {
+  cursor: pointer;
+  border: 0;
+  box-shadow: none;
+}
+.ai-session-status svg {
+  width: 18px;
+  height: 18px;
+}
+/* background-image:none diulang di sini (bukan hanya di atas) karena .workspace button memasang gradien lewat
+   shorthand background dengan spesifisitas lebih tinggi dari aturan dasar di atas. */
+.ai-session-card button.ai-session-status.online,
+.ai-session-status.online {
+  background-color: #1fb35a;
+  background-image: none;
+}
+.ai-session-card button.ai-session-status.offline,
+.ai-session-status.offline {
+  background-color: #9aa5a1;
+  background-image: none;
+}
+.ai-session-card button.ai-session-status.connecting,
+.ai-session-status.connecting {
+  background-color: #e0a52c;
+  background-image: none;
+}
+.ai-session-card-head strong {
+  font-size: 14px;
+  color: #153247;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.ai-session-card-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ai-session-card-name small {
+  color: #718394;
+  font-size: 12px;
+}
+.ai-session-card-foot {
+  display: flex;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.ai-session-card-foot .ai-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 !important;
+  height: 34px;
+  padding: 0 6px 0 10px;
+  border-radius: 10px;
+  background: #eef1ef;
+  color: #9aa5a1 !important;
+  font-size: 11px !important;
+  font-weight: 650;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.ai-session-card-foot .ai-toggle.active {
+  background: #e4f6ee;
+  color: #09976a !important;
+}
+.ai-session-robot {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: auto;
+  min-width: 0;
+}
+.ai-session-card-foot .ai-toggle span {
+  flex: none;
+}
+.ai-session-carousel .icon-button {
+  flex: none;
+  align-self: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+}
+.ai-session-card.placeholder {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  border-style: dashed;
+  background: #fafcfb;
+}
+.ai-session-card.placeholder .ai-session-placeholder-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.ai-session-card.placeholder .ai-session-placeholder-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.ai-session-card.placeholder strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.ai-session-card.placeholder-add {
+  border-color: #bcdccd;
+}
+.ai-session-card.placeholder-add:hover {
+  border-color: #09976a;
+}
+.ai-session-card.placeholder-add .ai-session-placeholder-icon {
+  background: #e4f6ee;
+  color: #09976a;
+}
+.ai-session-card.placeholder-add strong {
+  color: #09976a;
+}
+.ai-session-card.placeholder-upgrade {
+  border-color: #e7d9b3;
+}
+.ai-session-card.placeholder-upgrade:hover {
+  border-color: #c99a2e;
+}
+.ai-session-card.placeholder-upgrade .ai-session-placeholder-icon {
+  background: #fbf1dc;
+  color: #c99a2e;
+}
+.ai-session-card.placeholder-upgrade strong {
+  color: #a97c1c;
+}
+.ai-session-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+#ai-session-dots button.ai-session-dot {
+  width: 7px;
+  height: 7px;
+  min-height: 0;
+  border-radius: 50%;
+  background-color: #d5dfd9;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+#ai-session-dots button.ai-session-dot.active {
+  background-color: #09976a;
+}
+#ai-session-detail > .row-actions {
+  flex-wrap: wrap;
+  white-space: normal;
+  margin-bottom: 20px;
+}
+#ai-session-detail > .row-actions .session-filters {
+  margin-left: auto;
+  margin-right: 30px;
+}
+/* Dipasang di ujung kanan baris tab (row-actions diberi position:relative khusus di #ai-session-detail, jadi
+   row-actions di tempat lain tidak terpengaruh), bukan di kartu kredit yang sering dikira indikator isi ulang.
+   Absolute dan z-index tinggi membuatnya tidak pernah menggeser tombol tab saat muncul dan hilang. */
+#ai-session-detail .row-actions:has(#ai-save-status) {
+  position: relative;
+}
+.ai-save-status {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%) scale(0.6);
+  z-index: 5;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  box-shadow: 0 2px 6px #12261d26;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+  pointer-events: none;
+}
+.ai-save-status.saving,
+.ai-save-status.saved,
+.ai-save-status.error {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+.ai-save-status::after {
+  font-size: 12px;
+  line-height: 1;
+}
+.ai-save-status.saving {
+  color: #946609;
+}
+.ai-save-status.saving::after {
+  content: '⋯';
+  font-weight: 700;
+}
+.ai-save-status.saved {
+  color: #09976a;
+}
+.ai-save-status.saved::after {
+  content: '✓';
+  font-weight: 700;
+}
+.ai-save-status.error {
+  color: #c0392b;
+}
+.ai-save-status.error::after {
+  content: '!';
+  font-weight: 700;
+}
+.ai-balance-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #e8f5ee;
+  border-radius: 12px;
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+.ai-balance-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: #c9ebd8;
+  color: #087a56;
+}
+.ai-balance-icon-whatsapp {
+  background: #25d366;
+  color: #fff;
+}
+.ai-balance-icon svg {
+  width: 19px;
+  height: 19px;
+}
+@media (max-width: 760px) {
+  .ai-balance-icon {
+    display: none;
+  }
+}
+.ai-balance-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ai-balance-info small {
+  font-size: 10px;
+  color: #4c8267;
+}
+.ai-balance-info strong {
+  font-size: 14px;
+  color: #0c293c;
+  line-height: 1.2;
+}
+.ai-balance-sep {
+  width: 1px;
+  align-self: stretch;
+  background: #bfe0cd;
+}
+.ai-hero-buy {
+  min-height: 40px;
+  white-space: nowrap;
+}
+#ai-session-detail > .row-actions [aria-pressed='true'] {
+  background: #087b5a;
+  color: #fff;
+  border-color: #087b5a;
+}
+#ai-tab-knowledge .row-actions {
+  flex-wrap: wrap;
+  white-space: normal;
+  margin: 0 0 20px;
+}
+#ai-tab-knowledge .row-actions [aria-pressed='true'] {
+  background: #087b5a;
+  color: #fff;
+  border-color: #087b5a;
+}
+#ai-tab-knowledge .row-actions button {
+  font-size: 12px;
+  padding: 7px 12px;
+}
+#referral-config .ai-data-grid {
+  margin: 18px 0;
+}
+#referral-config fieldset {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 16px 18px;
+  margin: 0;
+  min-width: 0;
+}
+#referral-config legend {
+  font-size: 14px;
+  font-weight: 700;
+  color: #153247;
+  padding: 0;
+}
+#referral-config fieldset > p {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 6px 0 10px;
+}
+#referral-config fieldset label {
+  margin: 10px 0;
+}
+@media (max-width: 640px) {
+  #referral-config .ai-data-grid {
+    grid-template-columns: 1fr;
+  }
+}

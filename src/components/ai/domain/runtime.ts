@@ -1,0 +1,545 @@
+// Runtime WhatsApp: mengantrekan pesan masuk per pelanggan, menjalankan graf profil, menagih kredit, mengirim
+// jawaban (beserta media dari node Kirim media), dan menyimpan memori.
+import { type ModelRole, type AITraceEvent } from './pipeline/models.js';
+import { activeGraph, graphSystem } from './profiles/registry.js';
+import { transientAIError } from './pipeline/retry.js';
+import { runGraph } from './builder/engine.js';
+import { randomInt, randomUUID } from 'node:crypto';
+import { request } from 'node:https';
+import { db } from '../../../libraries/db.js';
+import { digest } from '../../../libraries/security.js';
+import { type SessionManager } from '../../whatsapp/index.js';
+import { ApiError } from '../../../libraries/errors.js';
+import type { IncomingMessage } from '../../whatsapp/index.js';
+import { basicWallet, sendBilled } from '../../billing/index.js';
+import { recordOutgoing } from './chat.js';
+import { AIMessage, defaults, provider, AITransport } from './provider.js';
+import { text } from './input-validation.js';
+import { countWords, aiFallback, creditCost, planPart, refundSplit } from './metering.js';
+import { transaction, lockAccount } from './transaction.js';
+import type { QueuedMedia } from './builder/media.js';
+import { recordFilePath, uploadRecordFile, recordFileLimits } from './builder/record-files.js';
+import { receivesMedia } from './builder/definition.js';
+import type { ToolContext } from './pipeline/scope.js';
+import { parseMemory } from './memory.js';
+import type { AIService } from './service.js';
+import * as conversations from './conversations.js';
+import * as agentFailuresSql from '../data-access/agent-failures-queries.js';
+import * as assistantsSql from '../data-access/assistants-queries.js';
+import * as conversationsSql from '../data-access/conversations-queries.js';
+import * as fallbacksSql from '../data-access/fallbacks-queries.js';
+import * as settingsSql from '../data-access/settings-queries.js';
+import * as traceLogSql from '../data-access/trace-log-queries.js';
+import * as usageSql from '../data-access/usage-queries.js';
+import * as walletsSql from '../data-access/wallets-queries.js';
+export function incoming(
+  svc: AIService,
+  account: string,
+  manager: SessionManager,
+  session: string,
+  message: IncomingMessage,
+) {
+  // Teks selalu diproses; gambar dan dokumen hanya untuk graf yang punya node Terima media (dicek nanti).
+  if (
+    message.isGroup ||
+    !/^\d{5,20}$/.test(message.from) ||
+    (message.type === 'text' ? !message.text.trim() : !['image', 'document'].includes(message.type))
+  )
+    return Promise.resolve();
+  const key = JSON.stringify([account, session, message.from]);
+  if (svc.queued >= 128) return Promise.resolve();
+  svc.queued++;
+  const task = (svc.queues.get(key) ?? Promise.resolve())
+    .then(async () => {
+      // Balasan tim untuk tiket fallback selalu berupa teks.
+      if (
+        message.type !== 'text' ||
+        !(await conversations.handleFallbackReply(svc, account, manager, session, message))
+      )
+        await handleMessage(svc, account, manager, session, message);
+    })
+    .catch(() => {
+      console.error('Pemrosesan AI gagal; periksa riwayat penggunaan.');
+    })
+    .finally(() => {
+      svc.queued--;
+      if (svc.queues.get(key) === task) svc.queues.delete(key);
+    });
+  svc.queues.set(key, task);
+  return task;
+}
+export async function stop(svc: AIService) {
+  await Promise.all(svc.queues.values());
+}
+export async function recover(svc: AIService, account?: string) {
+  // Di bawah kunci engine, panggilan yang terputus tidak diulang. Hasil provider yang tidak pasti tidak ditagihkan.
+  await transaction(async c => {
+    const [rows] = await usageSql.lockGenerating(c, account ? [account] : [], account);
+    for (const row of rows) {
+      const back = refundSplit(row.reserved, row.reserved_plan, row.reserved);
+      await walletsSql.refund(c, [back.toBalance, back.toPlan, row.account_id]);
+      await usageSql.markInterrupted(c, [row.account_id, row.request_id]);
+    }
+    await usageSql.resolveGenerated(c, account ? [account] : [], account);
+  });
+}
+export async function handleMessage(
+  svc: AIService,
+  account: string,
+  manager: SessionManager,
+  session: string,
+  message: IncomingMessage,
+) {
+  // Menjalankan graf terbit milik profil data profil sesi, selama pemilik menyalakan profil itu.
+  const config = await svc.config();
+  if (!config.secret) return;
+  const assistant = await svc.assistant(account, session),
+    type = assistant.data_profile?.profile_type ?? '';
+  if (!assistant.enabled || !type || !assistant.profile_enabled) return;
+  const graph = await activeGraph(type);
+  let incomingMedia: ToolContext['incomingMedia'];
+  const attachment = message.type === 'text' ? undefined : message;
+  if (attachment) {
+    if (!receivesMedia(graph)) return;
+    // Memori dan input alur memakai penanda lampiran ditambah keterangannya.
+    message = { ...message, text: mediaText(message) };
+  }
+  manager.connected(session);
+  if ((await basicWallet(account)).balance < 1) return;
+  const id = digest(JSON.stringify([session, message.from, message.messageId]));
+  const prepared = await transaction(async c => {
+    await lockAccount(c, account);
+    const [existing] = await usageSql.findRequest(c, [account, id]);
+    if (existing[0]) return;
+    const [current] = await assistantsSql.findForRuntime(c, [account, session, type]);
+    if (!current[0]?.enabled) return;
+    const [limits] = await settingsSql.shareMemoryLimit(c);
+    await conversationsSql.ensure(c, [account, session, message.from]);
+    const [conversations] = await conversationsSql.lockForMessage(c, [account, session, message.from]);
+    if (conversations[0].paused) return;
+    if (message.text.length > 4000) return;
+    const memory = [...parseMemory(conversations[0].messages), { role: 'user' as const, content: message.text }].slice(
+      -(limits[0]?.memory_limit ?? config.memory_limit),
+    );
+    await walletsSql.ensure(c, [account]);
+    const [wallet] = await walletsSql.findBalance(c, [account]);
+    const [pending] = await fallbacksSql.findWaitingForCustomer(c, [account, session, message.from]);
+    const fallbackNumber = String(current[0].fallback_number ?? '');
+    const system: AIMessage[] = [
+      { role: 'system', content: graphSystem },
+      ...([current[0].behavior] as string[]).filter(Boolean).map(content => ({ role: 'system' as const, content })),
+    ];
+    const messages = [...system, ...memory],
+      inputWords = messages.reduce((sum, m) => sum + countWords(m.content), 0);
+    // Instruksi sistem ikut dihitung; mengganti angka batasnya tidak mengubah jumlah katanya.
+    const maxWords = Math.min(
+      300,
+      Math.floor((wallet[0].balance - inputWords * config.input_rate) / config.output_rate),
+    );
+    if (inputWords > 12000 || maxWords < 1) return;
+    const reserved = creditCost(inputWords, maxWords, config.input_rate, config.output_rate);
+    // Kredit paket dipakai lebih dulu; bagiannya dicatat untuk refund yang tepat.
+    const fromPlan = planPart(reserved, wallet[0].plan_balance);
+    await walletsSql.debit(c, [reserved, account]);
+    await usageSql.insertMessage(c, [
+      account,
+      id,
+      session,
+      message.from,
+      inputWords,
+      config.input_rate,
+      config.output_rate,
+      reserved,
+      config.model,
+      type,
+      current[0].data_profile_id,
+      fromPlan,
+    ]);
+    await conversationsSql.updateMessages(c, [JSON.stringify(memory), account, session, message.from]);
+    return {
+      messages,
+      inputWords,
+      reserved,
+      fromPlan,
+      maxWords,
+      routerContext: conversations[0].router_context as string | null,
+      revision: conversations[0].revision,
+      behavior: current[0].behavior as string,
+      pendingFallbacks: pending.map(row => ({ id: String(row.id), question: String(row.question) })),
+      fallbackNumber,
+      fallbackNotify: Boolean(current[0].fallback_notify),
+      profileId: String(current[0].data_profile_id),
+      serviceName: String(current[0].name ?? ''),
+    };
+  });
+  if (!prepared) return;
+  // Lampiran baru diunduh setelah pesan pasti diproses (tidak dijeda, kredit cukup).
+  if (attachment) incomingMedia = await storeIncoming(account, prepared.profileId, attachment);
+  const jid = message.from + '@s.whatsapp.net';
+  // Urutan yang dilihat pelanggan: jeda singkat, centang biru, lalu "mengetik..." selama jawaban dibuat.
+  // Status dibaca/mengetik tidak dijamin, dan tidak pernah menambah pesan atau tagihan kredit.
+  await svc.wait(randomInt(200, 1001));
+  await manager.read(session, jid, message.messageId).catch(() => {});
+  await manager.typing(session, jid, 'composing').catch(() => {});
+  // WhatsApp menghapus status "mengetik" setelah beberapa detik, jadi diperbarui terus sampai balasan terkirim.
+  const typingRefresh = setInterval(() => {
+    manager.typing(session, jid, 'composing').catch(() => {});
+  }, 8000);
+  typingRefresh.unref();
+  let typingStopped = false;
+  const stopTyping = async () => {
+    if (typingStopped) return;
+    typingStopped = true;
+    clearInterval(typingRefresh);
+    await manager.typing(session, jid, 'paused').catch(() => {});
+  };
+  try {
+    // Pengaturan asisten (perilaku/fallback) bisa tersimpan otomatis di tengah proses; request yang sedang
+    // berjalan diselesaikan dengan pengaturan saat mulai, tidak dibatalkan setiap kali ada suntingan.
+    // Mematikan asisten adalah satu-satunya perubahan pengaturan yang langsung membatalkan proses berjalan.
+    // Mengganti data profil sesi, atau pemilik mematikan profilnya, juga membatalkan.
+    const guard = async () => {
+      const enabled = await svc.assistant(account, session);
+      const [rows] = await conversationsSql.findPausedRevision(db, [account, session, message.from]);
+      if (
+        !enabled.enabled ||
+        enabled.data_profile?.id !== prepared.profileId ||
+        !enabled.profile_enabled ||
+        rows[0]?.paused ||
+        rows[0]?.revision !== prepared.revision
+      )
+        throw new ApiError(409, 'ai_cancelled', 'Asisten atau konteks percakapan telah berubah');
+    };
+    const modelCalls: { role: ModelRole | undefined; model: string; status: string; attempt: number }[] = [];
+    const deadline = Date.now() + 120000;
+    const retryPause = async (attempt: number) => {
+      await svc.wait(500 * 2 ** attempt + randomInt(0, 251));
+      await guard();
+    };
+    let lastMessages: AIMessage[] | undefined, lastModel: string | undefined;
+    const trace = config.trace_enabled
+      ? (event: AITraceEvent) => {
+          traceLogSql
+            .insert(db, [
+              account,
+              session,
+              id,
+              type,
+              event.node.slice(0, 32),
+              event.state.slice(0, 20),
+              event.model?.slice(0, 100) ?? null,
+              event.attempt ?? null,
+              event.duration_ms ?? null,
+              event.input !== undefined ? JSON.stringify(event.input).slice(0, 60000) : null,
+              event.output !== undefined ? JSON.stringify(event.output).slice(0, 60000) : null,
+              event.error?.slice(0, 200) ?? null,
+            ])
+            .catch(() => {});
+        }
+      : undefined;
+    const trackedTransport: AITransport = async (selected, messages, maxWords) => {
+      lastMessages = messages;
+      lastModel = selected.model;
+      const node = selected.trace_node ?? selected.call_role ?? 'model';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await guard();
+        if (modelCalls.length >= 20 || Date.now() >= deadline) throw Error('ai_retry_limit');
+        const entry = {
+          role: selected.trace_node ?? selected.call_role,
+          model: selected.model,
+          status: 'failed',
+          attempt: attempt + 1,
+        };
+        modelCalls.push(entry);
+        trace?.({ node, state: 'running', input: messages, model: selected.model, attempt: attempt + 1 });
+        try {
+          const result = await svc.transport(selected, messages, maxWords);
+          entry.status = 'responded';
+          trace?.({ node, state: 'responded', output: result, model: selected.model, attempt: attempt + 1 });
+          return result;
+        } catch (error) {
+          trace?.({
+            node,
+            state: 'error',
+            error: error instanceof Error ? error.message : 'unknown_error',
+            attempt: attempt + 1,
+          });
+          if (attempt === 2 || !transientAIError(error)) throw error;
+          await retryPause(attempt);
+        }
+      }
+      throw Error('ai_retry_limit');
+    };
+    let answer: string,
+      agent: string | null = null,
+      generationFailed = false,
+      fallback: { reason: string; question: string } | undefined;
+    let lastNode: string | undefined, lastTraceError: string | undefined, lastRawOutput: string | undefined;
+    // File dari node Kirim media; dikirim hanya bila jawaban berhasil dan tidak diteruskan ke tim.
+    let queuedMedia: QueuedMedia[] = [];
+    config.checkpoint = guard;
+    config.onTrace = event => {
+      trace?.(event);
+      if (event.node === 'router' && event.state === 'routed')
+        lastNode = String((event.output as { sub_agent?: unknown })?.sub_agent ?? lastNode);
+      if (event.error) {
+        lastNode = event.node;
+        lastTraceError = event.error;
+        if (typeof event.output === 'string') lastRawOutput = event.output;
+      }
+    };
+    try {
+      const result = await runGraph(
+        graph,
+        trackedTransport,
+        config,
+        prepared.messages,
+        {
+          account,
+          profile: prepared.profileId,
+          session,
+          customer: message.from,
+          customerName: message.pushName ?? '',
+          incomingMedia,
+          serviceName: prepared.serviceName,
+          requestId: id,
+          behavior: prepared.behavior,
+          fallbackEnabled: true,
+          pendingFallbacks: prepared.pendingFallbacks,
+        },
+        prepared.routerContext,
+        undefined,
+        prepared.maxWords,
+      );
+      fallback = result.fallback;
+      if ('media' in result && result.media) queuedMedia = result.media;
+      answer = fallback ? 'Baik, saya konfirmasi dulu dan akan melanjutkan jawaban segera.' : result.answer;
+      agent = result.agent;
+    } catch (error) {
+      generationFailed = true;
+      answer = aiFallback;
+      const errorCode = error instanceof Error ? error.message : 'unknown_error';
+      await agentFailuresSql
+        .insert(db, [
+          account,
+          session,
+          id,
+          lastNode ?? null,
+          (lastTraceError ?? errorCode).slice(0, 100),
+          message.text.slice(0, 4000),
+          lastModel ?? null,
+          lastMessages ? JSON.stringify(lastMessages) : null,
+          lastRawOutput?.slice(0, 65000) ?? null,
+          prepared.routerContext,
+        ])
+        .catch(() => {});
+    }
+    // Ringkasan node Context bersifat internal dan tidak ditagih; jawaban yang gagal tidak menyimpan ringkasan baru.
+    const routerContext = generationFailed ? null : (config.graph_context ?? null);
+    const outputWords = generationFailed ? 0 : countWords(answer),
+      charged = generationFailed
+        ? 0
+        : creditCost(prepared.inputWords, outputWords, config.input_rate, config.output_rate);
+    const fallbackId = fallback ? 'FB-' + randomUUID().replaceAll('-', '').slice(0, 20).toUpperCase() : undefined;
+    await transaction(async c => {
+      await lockAccount(c, account, true);
+      const back = refundSplit(prepared.reserved, prepared.fromPlan, prepared.reserved - charged);
+      await walletsSql.refund(c, [back.toBalance, back.toPlan, account]);
+      await usageSql.finishMessage(c, [
+        generationFailed ? 'fallback_generated' : 'generated',
+        outputWords,
+        charged,
+        agent,
+        JSON.stringify(modelCalls),
+        modelCalls.find(call => call.role === agent)?.model ?? config.model,
+        account,
+        id,
+      ]);
+      if (fallbackId && fallback)
+        await fallbacksSql.insertIgnore(c, [
+          fallbackId,
+          account,
+          session,
+          message.from,
+          prepared.fallbackNumber,
+          agent ?? 'lainnya',
+          fallback.reason,
+          fallback.question,
+          prepared.routerContext,
+          JSON.stringify(prepared.messages),
+          message.messageId,
+        ]);
+    });
+    let status = 'sent';
+    try {
+      // Satu pesan berbayar per file; gagal mengirim media tidak pernah menahan jawaban teks.
+      const sendMedia = async (when: QueuedMedia['when']) => {
+        if (generationFailed || fallback) return;
+        for (const [index, item] of queuedMedia.entries()) {
+          if (item.when !== when) continue;
+          await guard();
+          const readFile = async () => {
+            const file = await recordFilePath(account, prepared.profileId, item.ref);
+            return { path: file.path, mimetype: file.mimetype, cleanup: async () => {} };
+          };
+          const sent = await sendBilled(
+            account,
+            manager,
+            session,
+            'media',
+            {
+              to: message.from,
+              type: item.type,
+              url: item.ref,
+              ...(item.type === 'document' ? { filename: item.filename } : {}),
+              ...(item.caption ? { caption: item.caption } : {}),
+            },
+            'ai_media_' + index + '_' + id,
+            item.kind === 'file' ? readFile : undefined,
+            guard,
+          ).catch(() => undefined);
+          if (sent)
+            await recordOutgoing(account, session, {
+              customer: message.from,
+              messageId: sent.messageId,
+              origin: 'ai',
+              type: item.type,
+              // Riwayat chat menampilkan keterangan media, atau nama filenya bila tanpa keterangan.
+              text: item.caption || item.filename,
+            }).catch(() => {});
+        }
+      };
+      await sendMedia('before');
+      await guard();
+      const confirmation = await sendBilled(
+        account,
+        manager,
+        session,
+        'text',
+        { to: message.from, text: answer },
+        'ai_' + id,
+        undefined,
+        guard,
+      );
+      await recordOutgoing(account, session, {
+        customer: message.from,
+        messageId: confirmation.messageId,
+        origin: 'ai',
+        text: answer,
+      }).catch(() => {});
+      if (fallbackId) await fallbacksSql.setConfirmationMessage(db, [confirmation.messageId, fallbackId]);
+      await sendMedia('after');
+    } catch (error) {
+      status =
+        error instanceof ApiError && error.code === 'ai_cancelled'
+          ? 'cancelled'
+          : error instanceof ApiError && error.code === 'send_unknown'
+            ? 'send_unknown'
+            : 'send_failed';
+    } finally {
+      await stopTyping();
+    }
+    if (status === 'sent' && fallbackId && fallback && prepared.fallbackNotify && prepared.fallbackNumber)
+      try {
+        // Nomor tim adalah nomor WhatsApp; tiket dari sesi Instagram diberitahukan lewat sesi WhatsApp akun ini.
+        const notifier = conversations.notifierSession(manager, session);
+        if (!notifier) throw new Error('Tidak ada sesi WhatsApp tersambung untuk notifikasi tim');
+        const notification = await sendBilled(
+          account,
+          manager,
+          notifier,
+          'text',
+          {
+            to: prepared.fallbackNumber,
+            text:
+              'Konfirmasi diperlukan [' +
+              fallbackId +
+              ']\\nPelanggan: ' +
+              (notifier === session ? message.from : customerLabel(manager, session, message)) +
+              '\\nPertanyaan: ' +
+              fallback.question +
+              '\\nKonteks: ' +
+              (prepared.routerContext ?? '-') +
+              '\\nBalas pesan ini atau awali balasan dengan ' +
+              fallbackId +
+              '.',
+          },
+          'fallback_team_' + id,
+        );
+        await recordOutgoing(account, notifier, {
+          customer: prepared.fallbackNumber,
+          messageId: notification.messageId,
+          origin: 'system',
+          text: 'Konfirmasi diperlukan [' + fallbackId + ']',
+        }).catch(() => {});
+        await fallbacksSql.setNotificationMessage(db, [notification.messageId, notifier, fallbackId]);
+      } catch {
+        await fallbacksSql.markFailed(db, [fallbackId]);
+      }
+    await transaction(async c => {
+      await lockAccount(c, account, true);
+      await usageSql.updateStatus(c, [
+        generationFailed && status !== 'cancelled' ? 'fallback_' + status : status,
+        account,
+        id,
+      ]);
+      if (status === 'sent') {
+        const [limits] = await settingsSql.shareMemoryLimit(c);
+        const [rows] = await conversationsSql.lockMessagesRevision(c, [account, session, message.from]);
+        if (!rows[0] || rows[0].revision !== prepared.revision) return;
+        const memory = [...parseMemory(rows[0].messages), { role: 'assistant' as const, content: answer }].slice(
+          -(limits[0]?.memory_limit ?? defaults.memory_limit),
+        );
+        await conversationsSql.updateMessagesAndContext(c, [
+          JSON.stringify(memory),
+          routerContext,
+          account,
+          session,
+          message.from,
+        ]);
+      }
+    });
+  } finally {
+    await stopTyping();
+  }
+}
+
+function mediaText(message: IncomingMessage) {
+  const label = message.type === 'image' ? '[Gambar]' : '[Dokumen: ' + (message.filename ?? 'file') + ']';
+  return (label + ' ' + message.text.trim()).trim();
+}
+// Lampiran disimpan sebagai file data profil (belum terikat record). Lampiran yang terlalu besar atau jenisnya tidak
+// didukung dianggap tidak ada, sehingga alur masuk ke port "Tidak ada".
+async function storeIncoming(account: string, profile: string, message: IncomingMessage) {
+  if (!message.download) return undefined;
+  try {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of await message.download()) {
+      size += chunk.length;
+      if (size > recordFileLimits.documentBytes) return undefined;
+      chunks.push(chunk);
+    }
+    const extension =
+      { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }[message.mimetype ?? ''] ?? '';
+    const name =
+      message.filename ??
+      (message.type === 'image' ? 'gambar-' + message.messageId.slice(0, 8) + extension : 'dokumen');
+    const file = await uploadRecordFile(account, profile, name, Buffer.concat(chunks));
+    return {
+      file: file.id,
+      filename: file.filename,
+      type: file.media_type,
+      mimetype: file.mimetype,
+      caption: message.text.trim(),
+    };
+  } catch {
+    console.error('Lampiran pelanggan tidak dapat disimpan.');
+    return undefined;
+  }
+}
+// Pelanggan Instagram disebut dengan nama dan sesinya, karena ID penggunanya tidak bisa dihubungi dari WhatsApp.
+function customerLabel(manager: SessionManager, session: string, message: IncomingMessage) {
+  const via = manager.detail(session).phone ?? session;
+  return (message.pushName ? message.pushName + ' ' : '') + '(DM Instagram ' + via + ')';
+}

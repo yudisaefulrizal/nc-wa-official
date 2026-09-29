@@ -1,0 +1,121 @@
+// Asisten AI, tab Uji Pesan dan Uji AI Asisten, serta tab Integrasi yang dipindah dari halaman lama.
+form('ai-trial-form', async data => {
+  $('ai-trial-error').textContent = '';
+  $('ai-trial-answer').hidden = true;
+  try {
+    const result = await api(
+      '/api/ai/trial',
+      'POST',
+      aiView === 'profiles'
+        ? { data_profile: aiTarget(), question: data.question }
+        : { session: data.session, question: data.question },
+    );
+    $('ai-trial-answer-text').textContent = result.answer;
+    // Uji Coba tidak mengirim WhatsApp: media dari node Kirim media hanya dicantumkan.
+    const media = result.media ?? [];
+    $('ai-trial-documents').hidden = !media.length;
+    $('ai-trial-documents').textContent = media.length
+      ? 'Media yang akan dikirim: ' +
+        media.map(m => m.name + (m.when === 'after' ? ' (sesudah jawaban)' : ' (sebelum jawaban)')).join(', ')
+      : '';
+    $('ai-trial-answer').hidden = false;
+    await loadAI();
+  } catch (e) {
+    $('ai-trial-error').textContent = e.message;
+  }
+});
+
+let legacyMessageTest = false;
+let receivedTestMessages = [];
+function renderReceivedTest() {
+  const list = $('ai-received-list');
+  if (!list) return;
+  list.replaceChildren();
+  if (!receivedTestMessages.length) {
+    const empty = document.createElement('p');
+    empty.className = 'ai-received-empty';
+    empty.textContent = 'Menunggu pesan pada sesi aktif.';
+    list.append(empty);
+    return;
+  }
+  for (const message of receivedTestMessages) {
+    const item = document.createElement('article'),
+      meta = document.createElement('div'),
+      badge = document.createElement('span'),
+      sender = document.createElement('strong'),
+      time = document.createElement('time'),
+      text = document.createElement('p');
+    item.className = 'ai-received-message ' + message.direction;
+    badge.textContent = message.direction === 'outgoing' ? 'Terkirim' : 'Diterima';
+    sender.textContent = message.sender || message.from || '—';
+    time.textContent = new Date(Number(message.timestamp || Date.now() / 1000) * 1000).toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    text.textContent = message.text || `[Pesan ${message.type || 'lain'}]`;
+    meta.append(badge, sender, time);
+    item.append(meta, text);
+    list.append(item);
+  }
+}
+function recordReceivedTest(message) {
+  if (message.sessionId !== $('ai-session').value) return;
+  receivedTestMessages.unshift(message);
+  receivedTestMessages = receivedTestMessages.slice(0, 5);
+  renderReceivedTest();
+}
+function clearReceivedTest() {
+  receivedTestMessages = [];
+  renderReceivedTest();
+}
+function aiTrialTab(tab) {
+  for (const name of ['message', 'assistant']) $('ai-trial-' + name).hidden = name !== tab;
+  document
+    .querySelectorAll('[data-ai-trial-tab]')
+    .forEach(button => button.setAttribute('aria-pressed', String(button.dataset.aiTrialTab === tab)));
+}
+$('sendconnection').required = false;
+$('sendconnection').disabled = true;
+{
+  const trial = $('ai-tab-trial'),
+    assistant = document.createElement('div'),
+    message = document.createElement('div'),
+    tabs = document.createElement('div');
+  assistant.id = 'ai-trial-assistant';
+  message.id = 'ai-trial-message';
+  tabs.id = 'ai-trial-tabs';
+  tabs.className = 'row-actions';
+  for (const [tab, label] of [
+    ['message', 'Uji Pesan'],
+    ['assistant', 'Uji AI Asisten'],
+  ]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.aiTrialTab = tab;
+    button.textContent = label;
+    button.onclick = () => aiTrialTab(tab);
+    tabs.append(button);
+  }
+  while (trial.firstChild) assistant.append(trial.firstChild);
+  const list = document.createElement('div');
+  list.id = 'ai-received-list';
+  const legacy = $('uji-pesan');
+  while (legacy.firstChild) message.append(legacy.firstChild);
+  message.append(list);
+  trial.append(tabs, message, assistant);
+  renderReceivedTest();
+  aiTrialTab('assistant');
+}
+{
+  const source = $('api-integrasi'),
+    panel = document.createElement('section'),
+    tab = button('API & Webhook', () => aiTab('integrasi'));
+  panel.id = 'ai-tab-integrasi';
+  panel.className = 'ai-management';
+  panel.hidden = true;
+  while (source.firstChild) panel.append(source.firstChild);
+  $('ai-session-detail').append(panel);
+  tab.dataset.aiTab = 'integrasi';
+  const actions = $('ai-session-detail').querySelector(':scope > .row-actions');
+  actions.insertBefore(tab, $('ai-session-filters'));
+}
