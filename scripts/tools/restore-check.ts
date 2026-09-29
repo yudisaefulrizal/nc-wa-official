@@ -22,7 +22,7 @@ try {
     throw new Error('Path arsip tidak valid');
   await exec('tar', ['-xzf', resolve(archive), '-C', snapshot]);
   const manifest = JSON.parse(await readFile(join(snapshot, 'manifest.json'), 'utf8'));
-  if (manifest.application !== 'nc-wa-saas' || !manifest.tables)
+  if (manifest.application !== 'nc-wa-official' || !manifest.tables)
     throw new Error('Manifest backup tidak valid atau belum memuat hitungan tabel');
   const datadir = join(temporary, 'mysql'),
     socket = join(temporary, 'mysql.sock');

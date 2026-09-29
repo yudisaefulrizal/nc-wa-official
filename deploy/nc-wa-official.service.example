@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=ncwa
 Group=ncwa
-WorkingDirectory=/srv/nc-wa-saas
+WorkingDirectory=/srv/nc-wa-official
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/node --env-file=.env dist/server.js
 Restart=on-failure
@@ -20,7 +20,7 @@ ProtectSystem=strict
 ProtectHome=true
 # storage/ must exist (owned by ncwa) before the first start. The optional auth/ entry lets an older install
 # move its old auth/ directory into storage/ on first start; it can be removed afterwards.
-ReadWritePaths=/srv/nc-wa-saas/storage /srv/nc-wa-saas/data -/srv/nc-wa-saas/auth
+ReadWritePaths=/srv/nc-wa-official/storage /srv/nc-wa-official/data -/srv/nc-wa-official/auth
 
 [Install]
 WantedBy=multi-user.target

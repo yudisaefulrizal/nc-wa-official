@@ -38,7 +38,7 @@ sudo git pull
 sudo npm ci            # hanya jika package-lock.json berubah
 sudo npm run migrate
 sudo npm run build
-sudo systemctl restart nc-wa-saas
+sudo systemctl restart nc-wa-official
 ```
 
 Saat start pertama setelah update, folder lama `auth/` otomatis dipindah ke `storage/`. Jika service memakai `ReadWritePaths` seperti contoh di `deploy/`, buat dulu `storage/` (pemilik user app) dan sesuaikan `ReadWritePaths` sebelum restart.

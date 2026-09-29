@@ -70,7 +70,7 @@ try {
   await writeFile(
     join(snapshot, 'manifest.json'),
     JSON.stringify(
-      { application: 'nc-wa-saas', database, createdAt: new Date().toISOString(), format: 1, tables },
+      { application: 'nc-wa-official', database, createdAt: new Date().toISOString(), format: 1, tables },
       null,
       2,
     ),
