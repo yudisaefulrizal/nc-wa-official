@@ -32,7 +32,7 @@ const service = new AIService(
   async () => {},
 );
 const app = createApp();
-const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8067';
+const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
 const scope = {
   account: client,
   profile: 'simulation',

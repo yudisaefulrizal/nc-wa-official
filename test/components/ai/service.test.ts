@@ -392,7 +392,7 @@ test('AI wallet adjustments are idempotent and HTTP owner configuration is priva
     f.id,
   ]);
   const cookie = 'ncwa_session=' + token,
-    origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8067';
+    origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
   await request(app).get('/api/admin/ai').set('Cookie', cookie).expect(403);
   await request(app).put('/api/admin/ai').set('Origin', origin).set('Cookie', cookie).send({}).expect(403);
   await request(app).get('/api/ai/wallet').expect(401);
@@ -441,7 +441,7 @@ test('Gateway assistant routes verify session ownership and account isolation', 
         digest(tokens[i]),
         account,
       ]);
-    const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8067';
+    const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
     await request(app)
       .post('/sessions')
       .set('Cookie', 'ncwa_session=' + tokens[0])

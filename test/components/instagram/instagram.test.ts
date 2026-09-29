@@ -103,7 +103,7 @@ const server = createServer(async (req, res) => {
 await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
 process.env.ZERNIO_API_URL = 'http://127.0.0.1:' + (server.address() as AddressInfo).port + '/api';
 process.env.PAYMENT_ENCRYPTION_KEY ??= 'a'.repeat(64);
-const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8067';
+const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
 
 class FixtureAI extends AIService {
   override async config() {

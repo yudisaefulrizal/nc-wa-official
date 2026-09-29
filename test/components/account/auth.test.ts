@@ -6,7 +6,7 @@ import request from 'supertest';
 import { app } from '../../../src/http/app.js';
 import { db } from '../../../src/libraries/db.js';
 import { hashPassword, verifyPassword, credentials } from '../../../src/libraries/security.js';
-const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8067';
+const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
 const emails: string[] = [];
 after(async () => {
   for (const email of emails) {

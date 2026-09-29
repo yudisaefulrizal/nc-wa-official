@@ -164,7 +164,7 @@ test('HTTP checkout ignores browser price/account and blocks another account fro
     digest(token),
     f.account,
   ]);
-  const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8067';
+  const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
   const response = await request(app)
     .post('/api/payments')
     .set('Origin', origin)

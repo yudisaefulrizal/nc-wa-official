@@ -270,7 +270,7 @@ test('HTTP: redeem endpoint works through the authenticated app router', async (
     digest(token),
     referred,
   ]);
-  const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8067';
+  const origin = process.env.APP_ORIGIN ?? 'http://127.0.0.1:8068';
   const response = await request(app)
     .post('/api/referral/redeem')
     .set('Origin', origin)

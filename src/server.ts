@@ -48,8 +48,8 @@ const tick = () => {
 };
 const paymentTimer = setInterval(tick, 30000).unref();
 tick();
-const server = app.listen(Number(process.env.PORT ?? 8067), process.env.HOST ?? '127.0.0.1', () =>
-  console.log('NC-WA SaaS siap pada port ' + (process.env.PORT ?? 8067)),
+const server = app.listen(Number(process.env.PORT ?? 8068), process.env.HOST ?? '127.0.0.1', () =>
+  console.log('NC-WA SaaS siap pada port ' + (process.env.PORT ?? 8068)),
 );
 let stopping = false;
 async function stop(code = 0) {
