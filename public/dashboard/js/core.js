@@ -1,5 +1,21 @@
 // Fondasi dashboard: helper bersama ($, api, run, form, table, element), login, navigasi, menu pengaturan, API key,
 // wallet, sesi WhatsApp dan pairing QR. Dimuat pertama; skrip lain di js/pages/ memakai nama-nama dari sini.
+// Sementara semua fitur WhatsApp disembunyikan dari dashboard (server: SHOW_WHATSAPP=1 menampilkannya lagi). Sesi
+// WhatsApp yang sudah ada tetap berjalan di server dan tetap dihitung ke jatah sesi.
+const showWhatsApp = document.querySelector('meta[name="ncwa-whatsapp"]')?.content === '1';
+document.body.classList.toggle('no-whatsapp', !showWhatsApp);
+// Sama untuk Instagram lewat Zernio (server: SHOW_ZERNIO=1). Sesi yang sudah terpasang lewat Zernio tetap tampil.
+const showZernio = document.querySelector('meta[name="ncwa-zernio"]')?.content === '1';
+document.body.classList.toggle('no-zernio', !showZernio);
+let hiddenSessionCount = 0;
+async function fetchSessions() {
+  const rows = await api('/sessions');
+  if (showWhatsApp) return rows;
+  const visible = rows.filter(s => s.channel === 'instagram');
+  const active = list => list.filter(s => s.serviceActive !== false).length;
+  hiddenSessionCount = active(rows) - active(visible);
+  return visible;
+}
 const $ = id => document.getElementById(id),
   fields = id => Object.fromEntries(new FormData($(id)));
 async function api(path, method = 'GET', body, headers = {}) {
@@ -182,7 +198,7 @@ async function wallet() {
     ? 'Berakhir ' + new Date(w.expires_at).toLocaleDateString('id-ID')
     : 'Reset setiap tanggal 1';
   $('wallet').textContent =
-    `${w.plan_id} · ${w.balance} kredit tersedia · ${w.session_limit} nomor · ${w.expires_at ? 'berakhir ' + new Date(w.expires_at).toLocaleString('id-ID') : 'reset tanggal 1, 00.00 WIB'}`;
+    `${w.plan_id} · ${w.balance} kredit tersedia · ${w.session_limit} sesi · ${w.expires_at ? 'berakhir ' + new Date(w.expires_at).toLocaleString('id-ID') : 'reset tanggal 1, 00.00 WIB'}`;
 }
 function updateActivePlan() {
   document.querySelectorAll('#catalog [data-plan-id]').forEach(card => {
@@ -214,7 +230,7 @@ async function catalog(id, authenticated = false) {
           description = document.createElement('p');
         h.textContent = p.name;
         if (!authenticated) {
-          description.textContent = `${money(p.price)} / bulan · ${p.credits} kredit WhatsApp${p.ai_credits ? ` · ${p.ai_credits} kredit AI` : ''} · ${p.session_limit} nomor`;
+          description.textContent = `${money(p.price)} / bulan · ${p.credits} kredit pesan${p.ai_credits ? ` · ${p.ai_credits} kredit AI` : ''} · ${p.session_limit} sesi`;
           article.append(h, description);
           return article;
         }
@@ -245,9 +261,9 @@ async function catalog(id, authenticated = false) {
         const features = document.createElement('ul');
         features.className = 'package-features';
         for (const text of [
-          `${new Intl.NumberFormat('id-ID').format(p.credits)} kredit WhatsApp per bulan`,
+          `${new Intl.NumberFormat('id-ID').format(p.credits)} kredit pesan per bulan`,
           ...(p.ai_credits ? [`${new Intl.NumberFormat('id-ID').format(p.ai_credits)} kredit AI per bulan`] : []),
-          `${p.session_limit} nomor WhatsApp`,
+          `${p.session_limit} sesi`,
           'Integrasi API dan webhook',
           'Terhubung dengan workflow n8n',
         ]) {
@@ -263,7 +279,7 @@ async function catalog(id, authenticated = false) {
           const buy = button('Beli paket', async () => {
             selectedPlan = p;
             $('purchase-summary').textContent =
-              `${p.name} · ${money(p.price)} · ${p.credits} kredit WhatsApp${p.ai_credits ? ` · ${p.ai_credits} kredit AI` : ''} · ${p.session_limit} nomor`;
+              `${p.name} · ${money(p.price)} · ${p.credits} kredit pesan${p.ai_credits ? ` · ${p.ai_credits} kredit AI` : ''} · ${p.session_limit} sesi`;
             $('purchase-modal').showModal();
           });
           buy.className = 'buy-package';
@@ -440,7 +456,7 @@ function setAuthMode(value) {
   $('authtitle').textContent = value ? 'Buat akun Anda' : 'Masuk ke akun Anda';
   $('authintro').textContent = value
     ? 'Mulai dengan paket dasar gratis.'
-    : 'Kelola WhatsApp dan integrasi Anda dalam satu tempat.';
+    : 'Kelola sosial media dan integrasi Anda dalam satu tempat.';
   $('authsubmit').textContent = value ? 'Buat akun' : 'Masuk';
   $('register').textContent = value ? 'Sudah punya akun? Masuk' : 'Belum punya akun? Daftar';
   $('auth').elements.password.autocomplete = value ? 'new-password' : 'current-password';
@@ -540,7 +556,7 @@ function navigate() {
           }[sub]
         : {
             nomor: 'Hubungkan nomor WhatsApp dan pantau koneksi Anda.',
-            integrasi: 'Hubungkan dan putuskan akun WhatsApp dan Instagram yang dilayani NC-WA.',
+            integrasi: 'Hubungkan dan kelola akun sosial media Anda.',
             dokumentasi: 'Panduan untuk membangun integrasi WhatsApp Anda.',
             'uji-pesan': 'Coba pengiriman dan lihat riwayat pemakaian kredit.',
             referral: 'Bagikan kode referral dan pantau bonus serta komisi Anda.',
@@ -628,7 +644,7 @@ function closeQr() {
   $('qrimage').removeAttribute('src');
 }
 async function sessions() {
-  const data = await api('/sessions');
+  const data = await fetchSessions();
   $('stat-active').textContent = data.filter(s => s.status === 'connected' && s.serviceActive !== false).length;
   for (const [id, label] of [
     ['sendconnection', 'Pilih sesi'],

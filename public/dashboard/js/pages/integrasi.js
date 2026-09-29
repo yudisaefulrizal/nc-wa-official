@@ -41,7 +41,7 @@ function showInstagramResult() {
 }
 async function loadIntegrations() {
   const [rows, wallet, official] = await Promise.all([
-    api('/sessions'),
+    fetchSessions(),
     api('/api/wallet'),
     api('/api/instagram/official'),
     loadZernio(),
@@ -111,7 +111,7 @@ function aiLine(s) {
   return s.aiProfile ? s.aiProfile.name + (s.aiEnabled ? ' · AI aktif' : ' · AI mati') : 'Profil AI belum dipasang';
 }
 function renderIntegrations() {
-  const active = integrations.sessions.filter(s => s.serviceActive !== false).length;
+  const active = integrations.sessions.filter(s => s.serviceActive !== false).length + hiddenSessionCount;
   $('integrations-quota').textContent = active + ' dari ' + integrations.limit + ' sesi';
   $('integrations-add').disabled = active >= integrations.limit;
   $('integrations-add').title = active >= integrations.limit ? 'Jatah sesi paket sudah penuh' : '';

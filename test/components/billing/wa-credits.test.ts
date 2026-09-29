@@ -1,4 +1,4 @@
-// Tes kredit WhatsApp hasil beli: dipakai setelah kredit paket habis, tidak ikut reset bulanan, refund kembali ke
+// Tes kredit pesan hasil beli: dipakai setelah kredit paket habis, tidak ikut reset bulanan, refund kembali ke
 // wadah asalnya, dan tidak memengaruhi hitungan kuota paket dasar maupun perpindahan ke paket berbayar.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';

@@ -20,7 +20,7 @@ const inboxKey = entry => entry.session + '\u0000' + entry.customer;
 async function loadInbox() {
   const [rows, sessionRows, contacts] = await Promise.all([
     api('/ai/chats'),
-    api('/sessions'),
+    fetchSessions(),
     api('/auto-share/contacts'),
   ]);
   inbox.sessions = sessionRows;

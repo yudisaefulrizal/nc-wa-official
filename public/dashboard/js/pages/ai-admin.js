@@ -208,7 +208,9 @@ async function loadAIConfig() {
     $('ai-config').elements[name].value = config[name];
   $('ai-config').elements.provider.dispatchEvent(new Event('change'));
   const routed = Boolean(config.profile_routing_enabled);
-  document.querySelectorAll('.ai-legacy-provider,[data-ai-test]').forEach(el => (el.hidden = routed));
+  // Provider, endpoint, dan model bawaan lama tidak lagi ditampilkan: provider, API key, dan uji koneksi ada di tab
+  // Provider (profil). Form ini tetap ada karena tab lain menyimpan tarif dan memori lewat form yang sama.
+  document.querySelectorAll('.ai-legacy-provider').forEach(el => (el.hidden = true));
   $('ai-config')
     .querySelectorAll('.ai-routing-note')
     .forEach(el => el.remove());
@@ -287,9 +289,9 @@ admin = async () => {
   routesHeading.textContent = 'Model per tingkat';
   routes.prepend(routesHeading);
   routes.querySelector('p').textContent =
-    'Pilih profil untuk setiap tingkat; API key tersimpan di server. Terstruktur memerlukan model dengan JSON Schema. Untuk memakai JEV pada Router, atur Keputusan ke profil OpenRouter dengan model typesafe/jev-1.13 lalu pilih tingkat Keputusan pada node Router di Editor profil.';
+    'Pilih profil provider untuk setiap tingkat. Model, API key, dan uji koneksi diatur di tab Provider. Terstruktur memerlukan model dengan JSON Schema. Untuk memakai JEV pada Router, atur Keputusan ke profil OpenRouter dengan model typesafe/jev-1.13 lalu pilih tingkat Keputusan pada node Router di Editor profil.';
   panels.provider.append($('ai-config-status'), page.querySelector('.ai-provider-panel'));
-  panels.model.append(routes, config, ...page.querySelectorAll('[data-ai-test]'));
+  panels.model.append(routes, config);
   panels.tidy.append(tidy, saver('Simpan prompt rapikan'));
   panels.billing.append(...billing, saver('Simpan tarif & kredit'));
   panels.memory.append(...memory, saver('Simpan memori & log'));
@@ -308,17 +310,6 @@ form('ai-config', async data => {
   await api('/api/admin/ai', 'PUT', data);
   await loadAIConfig();
   $('message').textContent = 'Pengaturan AI tersimpan.';
-});
-document.querySelectorAll('[data-ai-test]').forEach(b => {
-  b.onclick = () =>
-    run(async () => {
-      b.disabled = true;
-      try {
-        $('message').textContent = (await api('/api/admin/ai/test', 'POST', { tier: b.dataset.aiTest })).message;
-      } finally {
-        b.disabled = false;
-      }
-    });
 });
 async function loadModelUsage() {
   table(

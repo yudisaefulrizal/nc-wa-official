@@ -28,6 +28,8 @@ const port = await freePort(),
   zernioPort = await freePort();
 const origin = 'http://127.0.0.1:' + port;
 process.env.APP_ORIGIN = origin;
+process.env.SHOW_WHATSAPP = '1';
+process.env.SHOW_ZERNIO = '1';
 process.env.ZERNIO_API_URL = 'http://127.0.0.1:' + zernioPort + '/api';
 // Pemeriksaan ini menguji pesan "belum dikonfigurasi", jadi kunci Instagram dari .env dikosongkan.
 delete process.env.INSTAGRAM_APP_ID;
@@ -121,6 +123,24 @@ try {
   assert.equal(await official.locator('svg.chain.on').count(), 1);
   await mkdir(screenshots, { recursive: true });
   await page.screenshot({ path: join(screenshots, 'integrasi-desktop.png'), fullPage: true });
+  // Tanpa SHOW_WHATSAPP semua fitur WhatsApp disembunyikan; sesi Instagram tetap tampil.
+  process.env.SHOW_WHATSAPP = '';
+  process.env.SHOW_ZERNIO = '';
+  await page.goto(origin + '/dashboard/integrasi');
+  await grid.locator('.integration-tile', { hasText: 'kopisenja.id' }).waitFor();
+  assert.equal(await grid.locator('.integration-tile', { hasText: '628123456789' }).count(), 0);
+  assert.equal(await page.locator('.tabs a[href="/dashboard/auto-share"]').isVisible(), false);
+  assert.equal(await page.locator('#docslink').isVisible(), false);
+  assert.equal(await page.locator('#integrations-providers').isVisible(), false);
+  assert.equal(await page.locator('#open-zernio').isVisible(), false);
+  await page.locator('#integrations-add').click();
+  assert.equal(await page.locator('#addconnection .session-kind', { hasText: 'Scan QR' }).isVisible(), false);
+  assert.equal(await page.locator('#addconnection .session-kind', { hasText: 'Zernio' }).isVisible(), false);
+  assert.equal(await page.locator('#addconnection input[value="instagram-official"]').isChecked(), true);
+  process.env.SHOW_WHATSAPP = '1';
+  process.env.SHOW_ZERNIO = '1';
+  await page.goto(origin + '/dashboard/integrasi');
+  await grid.locator('.integration-tile', { hasText: '628123456789' }).waitFor();
   // Kartu dibuka untuk tindakan; Putuskan Instagram Zernio lalu hubungkan ulang (akunnya masih aktif di Zernio).
   const zernioTile = grid.locator('.integration-tile', { hasText: 'kopisenja.id' });
   await zernioTile.click();

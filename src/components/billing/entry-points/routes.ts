@@ -28,7 +28,7 @@ export function billingPublicRoutes(
     res.json(rows);
   });
 }
-// Pemakaian kredit WhatsApp, wallet, paket, dan pembayaran paket atau kredit AI.
+// Pemakaian kredit pesan, wallet, paket, dan pembayaran paket atau kredit AI.
 export function billingRoutes(
   app: express.Express,
   { payments, gateway }: { payments: Payments; gateway: { refresh(): Promise<void> } },
@@ -67,7 +67,7 @@ export function billingRoutes(
   app.post('/api/wa-credit/payments', async (req, res) =>
     res.json(await payments.create(res.locals.account.id, 'wa-100', 'wa_credit', req.body?.units)),
   );
-  // wa_credit_price adalah harga per 100 kredit WhatsApp hasil beli; 0 berarti pemilik belum menetapkannya.
+  // wa_credit_price adalah harga per 100 kredit pesan hasil beli; 0 berarti pemilik belum menetapkannya.
   app.get('/api/wallet', async (_req, res) => {
     const [settings] = await billingSettingsSql.find(db);
     res.json({
@@ -130,7 +130,7 @@ export function billingAdminRoutes(app: express.Express, { payments }: { payment
   app.put('/api/admin/billing-settings', async (req, res) => {
     const price = req.body?.wa_credit_price;
     if (!Number.isSafeInteger(price) || price < 0 || price > 100000000)
-      throw new ApiError(400, 'invalid_request', 'Harga per 100 kredit WhatsApp harus bilangan bulat 0 atau lebih');
+      throw new ApiError(400, 'invalid_request', 'Harga per 100 kredit pesan harus bilangan bulat 0 atau lebih');
     await billingSettingsSql.updateWaCreditPrice(db, [price]);
     await auditEventsSql.insert(db, [res.locals.account.id, 'wa_credit_price_updated']);
     res.json({ ok: true });

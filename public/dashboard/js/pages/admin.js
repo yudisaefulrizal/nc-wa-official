@@ -2,7 +2,7 @@
 async function plans() {
   table(
     'plans',
-    ['Nama paket', 'Harga / bulan', 'Kredit WhatsApp', 'Kredit AI', 'Batas nomor', 'Batas asset', 'Status', 'Tindakan'],
+    ['Nama paket', 'Harga / bulan', 'Kredit pesan', 'Kredit AI', 'Batas sesi', 'Batas asset', 'Status', 'Tindakan'],
     await api('/api/admin/plans'),
     p => {
       const actions = document.createElement('div');
@@ -43,7 +43,7 @@ async function plans() {
     },
   );
 }
-// Harga beli kredit WhatsApp satuan (per 100 kredit), diatur pemilik; 0 berarti belum bisa dibeli.
+// Harga beli kredit pesan satuan (per 100 kredit), diatur pemilik; 0 berarti belum bisa dibeli.
 async function loadBillingSettings() {
   $('wa-credit-price-form').elements.namedItem('wa_credit_price').value = (
     await api('/api/admin/billing-settings')
@@ -51,7 +51,7 @@ async function loadBillingSettings() {
 }
 form('wa-credit-price-form', async p => {
   await api('/api/admin/billing-settings', 'PUT', { wa_credit_price: Number(p.wa_credit_price) });
-  $('message').textContent = 'Harga kredit WhatsApp tersimpan.';
+  $('message').textContent = 'Harga kredit pesan tersimpan.';
 });
 form('planform', async p => {
   await api('/api/admin/plans/' + encodeURIComponent(p.id), 'PUT', {

@@ -53,7 +53,7 @@ function renderPayment(order) {
     (order.status === 'settlement' && order.kind === 'ai'
       ? 'Pembayaran berhasil. Saldo kredit AI telah ditambahkan.'
       : order.status === 'settlement' && order.kind === 'wa_credit'
-        ? 'Pembayaran berhasil. Kredit WhatsApp telah ditambahkan.'
+        ? 'Pembayaran berhasil. Kredit pesan telah ditambahkan.'
         : messages[order.status]) || 'Status sedang diperiksa.';
   const showQr =
     order.status === 'pending' &&
@@ -203,7 +203,7 @@ function waCreditSummary() {
     valid = Number.isSafeInteger(units) && units >= 1 && units <= 100;
   $('wa-credit-summary').textContent =
     valid && waCreditPrice
-      ? `${new Intl.NumberFormat('id-ID').format(units * 100)} kredit WhatsApp · ${money(waCreditPrice * units)}`
+      ? `${new Intl.NumberFormat('id-ID').format(units * 100)} kredit pesan · ${money(waCreditPrice * units)}`
       : 'Jumlah unit harus bilangan 1–100.';
   $('wa-credit-confirm').disabled = !valid || !waCreditPrice;
   return valid ? units : null;

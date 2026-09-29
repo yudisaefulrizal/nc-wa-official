@@ -53,7 +53,7 @@ let aiUsagePage = 1,
 // dan lainnya; cukup ringan untuk diambil berkala, supaya logout dari HP atau scan QR di tempat lain langsung
 // terlihat tanpa memuat ulang halaman.
 async function refreshSessionCards() {
-  const sessionRows = await api('/sessions');
+  const sessionRows = await fetchSessions();
   const selected = $('ai-session').value;
   aiSessions = sessionRows;
   if (!aiSessions.some(s => s.id === selected)) $('ai-session').value = aiSessions[0]?.id ?? '';

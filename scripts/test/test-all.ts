@@ -55,6 +55,9 @@ try {
     DB_PASSWORD: '',
     DB_NAME: 'share_test',
     AUTO_SHARE_ISOLATED: '1',
+    // Tes dan pemeriksaan browser menguji fitur WhatsApp, jadi tidak disembunyikan.
+    SHOW_WHATSAPP: '1',
+    SHOW_ZERNIO: '1',
   };
   async function run(args: string[]) {
     await new Promise<void>((resolve, reject) => {

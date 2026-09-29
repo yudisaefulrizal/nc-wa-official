@@ -129,9 +129,7 @@ export class Payments {
       throw new ApiError(
         400,
         'invalid_request',
-        kind === 'ai'
-          ? 'Jumlah unit kredit AI harus bilangan 1–100'
-          : 'Jumlah unit kredit WhatsApp harus bilangan 1–100',
+        kind === 'ai' ? 'Jumlah unit kredit AI harus bilangan 1–100' : 'Jumlah unit kredit pesan harus bilangan 1–100',
       );
     const effectivePlanId =
       kind === 'ai' && aiUnits > 1
@@ -178,10 +176,10 @@ export class Payments {
       if (kind === 'wa_credit') {
         const price = await this.waCreditPrice(c);
         if (selected !== 'wa-100' || !price)
-          throw new ApiError(409, 'wa_credit_unavailable', 'Harga kredit WhatsApp belum ditetapkan pemilik');
+          throw new ApiError(409, 'wa_credit_unavailable', 'Harga kredit pesan belum ditetapkan pemilik');
         plan = {
           id: effectivePlanId,
-          name: new Intl.NumberFormat('id-ID').format(100 * aiUnits) + ' Kredit WhatsApp',
+          name: new Intl.NumberFormat('id-ID').format(100 * aiUnits) + ' Kredit pesan',
           price: price * aiUnits,
           credits: 100 * aiUnits,
           ai_credits: 0,

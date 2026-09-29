@@ -576,3 +576,16 @@ pre {
   padding: 10px;
   flex-shrink: 0;
 }
+/* Fitur WhatsApp disembunyikan sementara (lihat showWhatsApp di core.js). */
+.no-whatsapp .tabs a[href='/dashboard/auto-share'],
+.no-whatsapp #docslink,
+.no-whatsapp .session-kind:has(input[value='whatsapp']) {
+  display: none !important;
+}
+/* Zernio disembunyikan sementara (lihat showZernio di core.js). */
+.no-zernio [data-open-zernio],
+.no-zernio #zernio-dialog,
+.no-zernio .session-kind:has(input[value='instagram']),
+.no-zernio .integrations-card:has(#integrations-providers) {
+  display: none !important;
+}

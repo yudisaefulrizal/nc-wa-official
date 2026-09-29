@@ -140,6 +140,9 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
       },
     }),
   );
+  // Kebijakan privasi publik (diminta Meta untuk mengaktifkan aplikasi).
+  app.get('/privacy', (_req, res) => res.type('html').send(page('privacy.html')));
+  app.get('/terms', (_req, res) => res.type('html').send(page('terms.html')));
   app.get(
     [
       '/',
@@ -167,7 +170,21 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
       '/dashboard/dokumentasi',
       '/dashboard/uji-pesan',
     ],
-    (_req, res) => res.type('html').send(page('dashboard/index.html')),
+    // Fitur WhatsApp dan Zernio disembunyikan sementara; SHOW_WHATSAPP=1 / SHOW_ZERNIO=1 menampilkannya lagi.
+    // Dashboard membaca meta ini.
+    (_req, res) =>
+      res
+        .type('html')
+        .send(
+          page('dashboard/index.html').replace(
+            '<head>',
+            '<head><meta name="ncwa-whatsapp" content="' +
+              (process.env.SHOW_WHATSAPP === '1' ? '1' : '0') +
+              '" /><meta name="ncwa-zernio" content="' +
+              (process.env.SHOW_ZERNIO === '1' ? '1' : '0') +
+              '" />',
+          ),
+        ),
   );
   app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

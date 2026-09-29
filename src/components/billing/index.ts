@@ -1,4 +1,4 @@
-// Komponen billing: paket, kredit WhatsApp dan reservasinya, pembayaran QRIS, dan pengiriman pesan yang
+// Komponen billing: paket, kredit pesan dan reservasinya, pembayaran QRIS, dan pengiriman pesan yang
 // memotong kredit. Komponen lain dan src/http hanya memakai nama yang diekspor di sini.
 export { recoverReservations } from './domain/credits.js';
 export { sendBilled } from './domain/outbound.js';

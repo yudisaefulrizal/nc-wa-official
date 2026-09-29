@@ -9,7 +9,7 @@ export function addBalance(c: Executor, params: SqlValue[]) {
     params,
   );
 }
-// Kredit paket menggantikan sisa kredit paket sebelumnya, seperti kredit WhatsApp paket: [akun, jumlah, berlaku sampai, periode].
+// Kredit paket menggantikan sisa kredit paket sebelumnya, seperti kredit pesan paket: [akun, jumlah, berlaku sampai, periode].
 export function grantPlan(c: Executor, params: SqlValue[]) {
   return c.execute(
     'INSERT INTO ai_wallets(account_id,plan_balance,plan_quota,plan_expires_at,plan_period) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE plan_balance=VALUES(plan_balance),plan_quota=VALUES(plan_quota),plan_expires_at=VALUES(plan_expires_at),plan_period=VALUES(plan_period)',

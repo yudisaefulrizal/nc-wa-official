@@ -1272,7 +1272,7 @@ function renderMedia(host, n) {
     ]),
     el(
       'p',
-      'Dikirim setelah alur selesai dan tidak dikirim bila percakapan diteruskan ke tim. Maksimal 3 file per balasan, 1 kredit WhatsApp per file. Simulasi dan Uji Coba hanya menampilkan daftarnya.',
+      'Dikirim setelah alur selesai dan tidak dikirim bila percakapan diteruskan ke tim. Maksimal 3 file per balasan, 1 kredit pesan per file. Simulasi dan Uji Coba hanya menampilkan daftarnya.',
       'hint',
     ),
   );

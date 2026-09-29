@@ -1,4 +1,4 @@
-// Paket dan wallet kredit WhatsApp: kuota paket dasar gratis yang direset tiap tanggal 1 WIB, validasi
+// Paket dan wallet kredit pesan: kuota paket dasar gratis yang direset tiap tanggal 1 WIB, validasi
 // katalog paket, dan aktivasi paket berbayar.
 import { db } from '../../../libraries/db.js';
 import type { PoolConnection } from 'mysql2/promise';
@@ -39,7 +39,7 @@ export async function ensureBasic(connection: PoolConnection, accountId: string,
   // `balance` adalah total yang bisa dipakai; kredit paket ada di `plan_balance`, kredit hasil beli di `purchased`.
   const row = result[0];
   const wallet = Object.assign(row, { plan_balance: row.balance, balance: row.balance + row.purchased });
-  // Kredit AI paket dasar: sebulan sekali bersama reset kredit WhatsApp; akun lama mendapatkannya saat pertama kali
+  // Kredit AI paket dasar: sebulan sekali bersama reset kredit pesan; akun lama mendapatkannya saat pertama kali
   // lewat sini. Mengubah jumlahnya di tengah bulan berlaku mulai bulan berikutnya.
   if (wallet.plan_id === 'basic') {
     const [granted] = await aiWalletsSql.findPlanPeriod(connection, [accountId]);

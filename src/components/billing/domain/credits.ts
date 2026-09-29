@@ -1,4 +1,4 @@
-// Reservasi kredit WhatsApp: kredit dipesan dulu dengan idempotency key sebelum pesan dikirim, lalu
+// Reservasi kredit pesan: kredit dipesan dulu dengan idempotency key sebelum pesan dikirim, lalu
 // diselesaikan (terkirim, dikembalikan, atau tidak pasti) setelah hasil kirim diketahui.
 import { db } from '../../../libraries/db.js';
 import { ensureBasic } from './plans.js';

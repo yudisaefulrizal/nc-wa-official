@@ -1,5 +1,5 @@
-// Pemeriksaan browser kredit di paket dan beli kredit: form paket pemilik (kolom Kredit AI), harga kredit WhatsApp
-// satuan, katalog paket klien, kartu dan dialog beli kredit WhatsApp, serta rincian saldo (kredit paket dipakai lebih
+// Pemeriksaan browser kredit di paket dan beli kredit: form paket pemilik (kolom Kredit AI), harga kredit pesan
+// satuan, katalog paket klien, kartu dan dialog beli kredit pesan, serta rincian saldo (kredit paket dipakai lebih
 // dulu) di dashboard klien.
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
@@ -74,10 +74,10 @@ try {
   assert.match(await row.innerText(), /25000/);
   const [saved] = await db.execute<any[]>('SELECT ai_credits FROM plans WHERE id=?', [planId]);
   assert.equal(saved[0].ai_credits, 25000);
-  // Pemilik menetapkan harga beli 100 kredit WhatsApp; nilainya tersimpan.
+  // Pemilik menetapkan harga beli 100 kredit pesan; nilainya tersimpan.
   await admin.locator('#wa-credit-price-form input[name="wa_credit_price"]').fill('4000');
   await admin.locator('#wa-credit-price-form').getByRole('button', { name: 'Simpan harga' }).click();
-  await admin.locator('#message', { hasText: 'Harga kredit WhatsApp tersimpan' }).waitFor();
+  await admin.locator('#message', { hasText: 'Harga kredit pesan tersimpan' }).waitFor();
   const [priceRow] = await db.execute<any[]>('SELECT wa_credit_price FROM billing_settings WHERE id=1');
   assert.equal(priceRow[0].wa_credit_price, 4000);
   await db.execute('UPDATE wallets SET purchased=40 WHERE account_id=?', [client]);
@@ -94,13 +94,13 @@ try {
   const card = page.locator('#catalog article', { hasText: 'Paket uji AI' });
   await card.waitFor();
   assert.match(await card.innerText(), /25\.000 kredit AI per bulan/);
-  assert.match(await card.innerText(), /1\.000 kredit WhatsApp per bulan/);
-  // Kartu beli kredit WhatsApp: harga tampil dan dialog menghitung total.
-  const wa = page.locator('#catalog article', { hasText: 'Kredit WhatsApp' }).first();
+  assert.match(await card.innerText(), /1\.000 kredit pesan per bulan/);
+  // Kartu beli kredit pesan: harga tampil dan dialog menghitung total.
+  const wa = page.locator('#catalog article', { hasText: 'Kredit pesan' }).first();
   assert.match(await wa.innerText(), /Rp\s?4\.000 per 100 kredit/);
   await page.locator('#wa-buy').click();
   await page.locator('#wa-credit-units').fill('3');
-  assert.match(await page.locator('#wa-credit-summary').innerText(), /300 kredit WhatsApp · Rp\s?12\.000/);
+  assert.match(await page.locator('#wa-credit-summary').innerText(), /300 kredit pesan · Rp\s?12\.000/);
   await page.locator('#wa-credit-units').fill('0');
   assert.equal(await page.locator('#wa-credit-confirm').isDisabled(), true);
   await page.locator('#wa-credit-modal').getByRole('button', { name: 'Tutup' }).click();

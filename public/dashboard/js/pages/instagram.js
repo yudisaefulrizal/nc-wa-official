@@ -102,6 +102,10 @@ async function loadInstagramAccounts() {
 }
 // Menampilkan isian yang sesuai jenis sesi; pilihan akun Zernio hanya wajib untuk Instagram.
 function syncSessionKind() {
+  // Jenis sesi yang disembunyikan tidak boleh terpilih; pilihan awalnya Instagram resmi.
+  const chosen = $('sessionform').querySelector('input[name="kind"]:checked')?.value;
+  if ((!showWhatsApp && chosen === 'whatsapp') || (!showZernio && chosen === 'instagram'))
+    $('sessionform').querySelector('input[value="instagram-official"]').checked = true;
   const kind = $('sessionform').querySelector('input[name="kind"]:checked')?.value;
   const instagram = kind === 'instagram',
     official = kind === 'instagram-official';

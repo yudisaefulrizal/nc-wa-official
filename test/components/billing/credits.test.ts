@@ -1,4 +1,4 @@
-// Tes reservasi kredit WhatsApp: kiriman bersamaan, idempotensi, hasil tidak pasti, pergantian periode, dan restart.
+// Tes reservasi kredit pesan: kiriman bersamaan, idempotensi, hasil tidak pasti, pergantian periode, dan restart.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';

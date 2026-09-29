@@ -10,7 +10,7 @@ const upgradeIcon =
 // upgrade saat kuota penuh.
 function buildSessionSlots() {
   const used = aiSessions.length,
-    limit = Math.max(1, aiSessionLimit);
+    limit = Math.max(1, aiSessionLimit - hiddenSessionCount);
   const slots = aiSessions.slice();
   if (limit < 5) {
     for (let i = used; i < limit; i++) slots.push({ placeholder: 'add' });
