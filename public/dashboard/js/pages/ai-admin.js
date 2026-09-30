@@ -224,7 +224,10 @@ async function loadAIConfig() {
   const routed = Boolean(config.profile_routing_enabled);
   // Provider, endpoint, dan model bawaan lama tidak lagi ditampilkan: provider, API key, dan uji koneksi ada di tab
   // Provider (profil). Form ini tetap ada karena tab lain menyimpan tarif dan memori lewat form yang sama.
-  document.querySelectorAll('.ai-legacy-provider').forEach(el => (el.hidden = true));
+  document.querySelectorAll('.ai-legacy-provider').forEach(el => {
+    el.hidden = true;
+    el.querySelectorAll('input, select, textarea').forEach(control => (control.disabled = true));
+  });
   $('ai-config')
     .querySelectorAll('.ai-routing-note')
     .forEach(el => el.remove());
@@ -234,11 +237,9 @@ async function loadAIConfig() {
     note.textContent = 'Provider dan model aktif mengikuti pilihan Model per tingkat di atas.';
     $('ai-config').prepend(note);
   }
-  $('ai-config-status').textContent = routed
-    ? 'API key dikelola pada tab Provider.'
-    : config.configured
-      ? 'API key tersimpan terenkripsi.'
-      : 'Koneksi AI belum dikonfigurasi. Tambahkan profil di tab Provider.';
+  $('ai-config-status').textContent = config.configured
+    ? 'Koneksi AI memakai profil Provider dan rute per tingkat.'
+    : 'Belum ada rute ke profil Provider aktif dengan API key.';
   await loadProviderProfiles();
 }
 const adminWithoutProviders = admin;

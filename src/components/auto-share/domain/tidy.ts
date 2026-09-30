@@ -91,8 +91,8 @@ export async function tidyMessage(
 ): Promise<TidyOutcome> {
   const keep = (reason: string): TidyOutcome => ({ message: original, tidied: false, reason });
   if (!original.trim()) return keep('kosong');
-  if (!config.secret) return keep('ai_belum_dikonfigurasi');
   const cheap = tierConfig(config, 'cheap');
+  if (!cheap.secret) return keep('ai_belum_dikonfigurasi');
   const prompt = (config.tidy_prompt || defaultTidyPrompt).trim();
   const messages = tidyMessages(prompt, note.trim().slice(0, maxTidyNoteLength), original);
   const inputWords = messages.reduce((sum, m) => sum + countWords(m.content), 0);

@@ -7,7 +7,7 @@ import { encrypt } from '../../../libraries/crypto.js';
 import { ApiError } from '../../../libraries/errors.js';
 import { validatePublicUrl } from '../../../libraries/download.js';
 import { object } from '../../../libraries/validation.js';
-import { AIProvider, AIConfig, defaults, provider, chatEndpoint, jevConnectionProbe } from './provider.js';
+import { AIConfig, defaults, provider, chatEndpoint, jevConnectionProbe } from './provider.js';
 import { isJevModel } from './pipeline/models.js';
 import { fail, integer, text } from './input-validation.js';
 import { transaction } from './transaction.js';
@@ -20,46 +20,45 @@ import * as providerRoutesSql from '../data-access/provider-routes-queries.js';
 import * as settingsSql from '../data-access/settings-queries.js';
 export async function loadConfig(svc: AIService): Promise<AIConfig> {
   const [rows] = await settingsSql.find(db);
-  const stored = rows[0],
-    host = new URL(stored?.endpoint ?? defaults.endpoint).hostname;
-  const detected: AIProvider =
-    host === 'openrouter.ai' ? 'openrouter' : host === 'ai.sumopod.com' ? 'sumopod' : 'compatible';
+  const stored = rows[0];
+  // ai_settings hanya menyumbang preferensi; koneksi tidak pernah dibaca dari kolom lamanya.
   const config: AIConfig = {
     ...defaults,
-    ...(stored ?? {}),
-    provider: detected,
+    input_rate: stored?.input_rate ?? defaults.input_rate,
+    output_rate: stored?.output_rate ?? defaults.output_rate,
+    memory_limit: stored?.memory_limit ?? defaults.memory_limit,
+    context_memory_limit: stored?.context_memory_limit ?? defaults.context_memory_limit,
+    credit_price: stored?.credit_price ?? defaults.credit_price,
+    tidy_prompt: stored?.tidy_prompt ?? defaults.tidy_prompt,
     trace_enabled: Boolean(stored?.trace_enabled),
+    tier_profiles: {},
+    profile_routing_enabled: true,
   };
-  for (const tier of modelTiers) config[`model_${tier}`] = config[`model_${tier}`] || config.model;
-  if (stored?.profile_routing_enabled) {
-    try {
-      // p.* menjaga routing tetap jalan bila kode berjalan sebelum `npm run migrate` menambah kolom tier baru; rute atau
-      // model Terstruktur atau Keputusan yang belum ada lalu memakai Murah, seperti pada migrasi.
-      const [routes] = await providerRoutesSql.listWithProfiles(db);
-      const profiles: NonNullable<AIConfig['tier_profiles']> = Object.fromEntries(
-        routes.map(r => [
-          r.tier,
-          {
-            id: r.id,
-            provider: r.provider,
-            endpoint: r.endpoint,
-            secret: r.secret,
-            model: r['model_' + r.tier] || r.model_cheap,
-          },
-        ]),
-      );
-      // Tingkat tanpa profil aktif (rute hilang atau profilnya dinonaktifkan) memakai profil aktif lain, bukan kembali ke
-      // pengaturan lama yang bisa berisi provider dan model yang sudah lama tidak dipakai.
-      const live = profiles.cheap ?? profiles.medium ?? profiles.smart ?? Object.values(profiles)[0];
-      if (live) for (const tier of modelTiers) profiles[tier] ??= live;
-      config.tier_profiles = profiles;
-    } catch (error) {
-      console.error(
-        'Rute provider AI gagal dimuat; memakai konfigurasi lama.',
-        error instanceof Error ? error.message : error,
-      );
-    }
-  }
+  // Kegagalan query harus sampai ke pemanggil, bukan diam-diam memilih kredensial lama.
+  const [routes] = await providerRoutesSql.listWithProfiles(db);
+  const profiles: NonNullable<AIConfig['tier_profiles']> = Object.fromEntries(
+    routes.map(r => [
+      r.tier,
+      {
+        id: r.id,
+        provider: r.provider,
+        endpoint: r.endpoint,
+        secret: r.secret,
+        model: r['model_' + r.tier] || r.model_cheap,
+      },
+    ]),
+  );
+  const live = profiles.cheap ?? profiles.medium ?? profiles.smart ?? Object.values(profiles)[0];
+  if (live) for (const tier of modelTiers) profiles[tier] ??= live;
+  config.tier_profiles = profiles;
+  // Field tingkat atas adalah proyeksi tier Sedang untuk pemanggil umum dan status kesiapan.
+  const primary = profiles.medium;
+  config.secret = primary?.secret ?? '';
+  config.endpoint = primary?.endpoint ?? defaults.endpoint;
+  config.provider = primary?.provider ?? defaults.provider;
+  config.model = primary?.model ?? '';
+  for (const tier of modelTiers) config[`model_${tier}`] = profiles[tier]?.model ?? '';
+
   return config;
 }
 export async function configuration(svc: AIService) {
@@ -193,18 +192,8 @@ export async function configure(svc: AIService, actor: string, body: unknown) {
   const input = object(body),
     previous = await svc.config();
   if (typeof input.trace_enabled !== 'boolean') throw fail('Status log lengkap wajib valid');
-  const selectedProvider = provider(input.provider ?? previous.provider);
-  const endpoint = chatEndpoint(text(input.endpoint, 512, 'Endpoint'));
-  const host = new URL(endpoint).hostname;
-  if (selectedProvider === 'openrouter' && host !== 'openrouter.ai')
-    throw fail('Endpoint OpenRouter harus memakai openrouter.ai');
-  if (selectedProvider === 'sumopod' && host !== 'ai.sumopod.com')
-    throw fail('Endpoint Sumopod harus memakai ai.sumopod.com');
-  const config: AIConfig = {
-    provider: selectedProvider,
-    endpoint,
-    model: text(input.model_medium ?? input.model, 100, 'Model sedang'),
-    secret: previous.secret,
+  if (input.apiKey) throw fail('API key disimpan melalui profil Provider.');
+  const config = {
     input_rate: integer(input.input_rate, 0, 1000, 'Tarif input'),
     output_rate: integer(input.output_rate, 1, 1000, 'Tarif output'),
     memory_limit: integer(input.memory_limit, 1, 100, 'Batas memori'),
@@ -213,41 +202,25 @@ export async function configure(svc: AIService, actor: string, body: unknown) {
     credit_price: integer(input.credit_price, 0, 1000000, 'Harga per 10.000 kredit'),
     tidy_prompt: text(input.tidy_prompt ?? previous.tidy_prompt ?? '', 2000, 'Prompt rapikan pesan'),
   };
-  for (const tier of modelTiers) {
-    const key = `model_${tier}` as const;
-    config[key] = text(
-      input[key] ?? (tier === 'medium' ? config.model : previous[key]) ?? config.model,
-      100,
-      'Model ' + tier,
-    );
-    if (!config[key]) throw fail('Model ' + tier + ' wajib diisi');
-  }
-  if (!config.model) throw fail('Model wajib diisi');
-  await validatePublicUrl(config.endpoint);
-  if (input.apiKey !== undefined && input.apiKey !== '') {
-    const key = text(input.apiKey, 512, 'API key');
-    if (!key || /[\r\n]/.test(key)) throw fail('API key tidak valid');
-    config.secret = encrypt(key);
-  }
-  // Dengan rute profil aktif, API key ada di profil provider; pengaturan lama (tarif, memori) tetap bisa disimpan tanpanya.
-  if (!config.secret && !Object.keys(previous.tier_profiles ?? {}).length) throw fail('API key wajib diisi');
   await transaction(async c => {
-    await settingsSql.upsert(c, [
-      config.endpoint,
-      config.model,
-      config.secret,
+    await settingsSql.ensureRow(c, [
+      defaults.endpoint,
+      defaults.model,
+      defaults.input_rate,
+      defaults.output_rate,
+      defaults.memory_limit,
+      defaults.context_memory_limit,
+      defaults.trace_enabled,
+      defaults.credit_price,
+    ]);
+    await settingsSql.updatePreferences(c, [
       config.input_rate,
       config.output_rate,
       config.memory_limit,
       config.context_memory_limit,
       config.trace_enabled,
       config.credit_price,
-      config.model_cheap ?? config.model,
-      config.model_medium ?? config.model,
-      config.model_smart ?? config.model,
-      config.model_structured ?? config.model,
-      config.model_decision ?? config.model,
-      config.tidy_prompt ?? '',
+      config.tidy_prompt,
     ]);
     // Pemotongan JSON memangkas memori semua akun seketika tanpa membuka isi percakapan.
     const [rows] = await conversationsSql.lockAll(c);

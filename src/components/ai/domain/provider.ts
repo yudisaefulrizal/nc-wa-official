@@ -51,6 +51,7 @@ export interface AIConfig {
   model_smart?: string;
   model_structured?: string;
   model_decision?: string;
+  profile_routing_enabled?: boolean;
   tier_profiles?: Partial<
     Record<ModelTier, { id: string; provider: AIProvider; endpoint: string; secret: string; model: string }>
   >;

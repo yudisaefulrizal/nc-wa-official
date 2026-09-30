@@ -875,7 +875,7 @@ test('Full auto persists per conversation, survives manual replies, and explicit
   assert.equal(row.paused, 1);
 });
 
-test('Owner model configuration persists, legacy fallback works, tests select each tier, and client usage hides models', async () => {
+test('Provider profiles are the only model source; tests select tiers and client usage hides models', async () => {
   const f = await fixture();
   const [saved] = await db.query<any[]>('SELECT * FROM ai_settings WHERE id=1');
   const calls: string[] = [];
@@ -883,40 +883,45 @@ test('Owner model configuration persists, legacy fallback works, tests select ea
     calls.push(c.model);
     return 'OK';
   });
+  let providerId = '';
   try {
-    await service.configure(f.id, {
-      ...defaults,
-      endpoint: 'https://8.8.8.8/v1/chat/completions',
-      apiKey: 'fixture-only',
-      model_cheap: 'cheap-fixture',
-      model_medium: 'medium-fixture',
-      model_smart: 'smart-fixture',
-      model_decision: 'decision-fixture',
-    });
-    const config = await new AIService().configuration();
-    assert.equal(config.model_cheap, 'cheap-fixture');
+    providerId = (
+      await service.saveProviderProfile({
+        name: 'Fixture tunggal',
+        provider: 'compatible',
+        endpoint: 'https://8.8.8.8/v1/chat/completions',
+        apiKey: 'fixture-only',
+        model_cheap: 'cheap-fixture',
+        model_medium: 'medium-fixture',
+        model_smart: 'smart-fixture',
+        model_structured: 'structured-fixture',
+        model_decision: 'decision-fixture',
+      })
+    ).id;
+    await service.setProviderRoutes(
+      Object.fromEntries(
+        ['cheap', 'medium', 'smart', 'structured', 'decision'].map(t => [t, { profileId: providerId }]),
+      ),
+    );
+    await service.configure(f.id, { ...defaults });
+    const config = await service.configuration();
     assert.equal(config.model_medium, 'medium-fixture');
-    assert.equal(config.model_smart, 'smart-fixture');
-    assert.equal(config.model_decision, 'decision-fixture');
+    assert.equal(config.configured, true);
     assert.ok(!JSON.stringify(config).includes('fixture-only'));
     for (const tier of ['cheap', 'medium', 'smart', 'decision']) await service.test(tier);
     assert.deepEqual(calls, ['cheap-fixture', 'medium-fixture', 'smart-fixture', 'decision-fixture']);
     await assert.rejects(service.test('invalid'));
-    await assert.rejects(
-      service.configure(f.id, { ...defaults, model_medium: '', model_cheap: 'x', model_smart: 'z' }),
-    );
-    await service.configure(f.id, {
-      ...defaults,
-      endpoint: 'https://8.8.8.8/v1/chat/completions',
-      model: 'legacy-updated',
-    });
-    assert.equal((await service.config()).model_medium, 'legacy-updated');
-    assert.equal((await service.config()).model_cheap, 'cheap-fixture');
-    await db.query('UPDATE ai_settings SET model_cheap=NULL,model_medium=NULL,model_smart=NULL WHERE id=1');
-    const legacy = await service.config();
-    assert.equal(legacy.model_cheap, legacy.model);
-    assert.equal(legacy.model_smart, legacy.model);
+    await assert.rejects(service.configure(f.id, { ...defaults, apiKey: 'legacy-write' }), { code: 'invalid_request' });
+    await service.configure(f.id, { ...defaults, model: 'legacy-updated', model_medium: 'legacy-updated' });
+    assert.equal((await service.config()).model_medium, 'medium-fixture');
+    await db.query("UPDATE ai_settings SET secret='',profile_routing_enabled=FALSE,model='ignored-legacy' WHERE id=1");
+    assert.equal((await service.configuration()).configured, true);
+    assert.equal((await service.config()).model_medium, 'medium-fixture');
   } finally {
+    if (providerId) {
+      await db.execute('DELETE FROM ai_provider_routes WHERE profile_id=?', [providerId]);
+      await db.execute('DELETE FROM ai_provider_profiles WHERE id=?', [providerId]);
+    }
     await db.query('DELETE FROM ai_settings WHERE id=1');
     if (saved[0]) {
       const keys = Object.keys(saved[0]);

@@ -31,5 +31,7 @@ export function tierConfig(config: AIConfig, tier: ModelTier): AIConfig {
         secret: profile.secret,
         model: profile.model,
       }
-    : { ...config, model: config[`model_${tier}`] || config.model };
+    : config.tier_profiles
+      ? { ...config, secret: '', model: '' }
+      : { ...config, model: config[`model_${tier}`] || config.model };
 }
