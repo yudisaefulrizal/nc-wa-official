@@ -2,7 +2,11 @@
 // disimpan terenkripsi, daftar tanpa token, perpanjangan, isolasi antar akun, dan callback deauthorize/data-deletion.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import sharp from 'sharp';
 import { createHmac, randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
@@ -10,8 +14,6 @@ import { db } from '../../../src/libraries/db.js';
 import { digest } from '../../../src/libraries/security.js';
 import { createApp } from '../../../src/http/app.js';
 import { createGateway } from '../../../src/http/gateway.js';
-import { instagram } from '../../../src/components/instagram/index.js';
-import { basicWallet } from '../../../src/components/billing/domain/plans.js';
 import { instagram } from '../../../src/components/instagram/index.js';
 import { basicWallet } from '../../../src/components/billing/domain/plans.js';
 
@@ -263,6 +265,78 @@ test('kirim DM lewat Graph API resmi memakai token di header Authorization', asy
   assert.equal(sent.path, '/v23.0/17841400000000009/messages');
   assert.equal(sent.auth, 'Bearer long-token');
   assert.deepEqual(JSON.parse(sent.body), { recipient: { id: '17841400000000555' }, message: { text: 'Ada kak' } });
+});
+test('konektor resmi mengirim gambar melalui URL sementara tanpa login dan mencatat ID gema', async () => {
+  const { channelConnector, ChannelHub, messageIdOf } =
+    await import('../../../src/components/instagram/domain/channel-connection.js');
+  const { outboundMedia } = await import('../../../src/components/instagram/data-access/outbound-media-store.js');
+  const root = await mkdtemp(join(tmpdir(), 'ig-send-test-'));
+  const previousOrigin = process.env.APP_ORIGIN;
+  process.env.APP_ORIGIN = origin;
+  const registered: string[] = [];
+  const connect = channelConnector(
+    accounts[0],
+    async () => {
+      throw new Error('Bukan WhatsApp');
+    },
+    new ChannelHub(),
+    async (_session, id) => {
+      registered.push(id);
+    },
+  );
+  const connection = await connect('ig-kopisenja', () => {});
+  assert.equal(connection.mediaCaption, 'separate');
+  let publishedPath: string | undefined;
+  let convertedPath: string | undefined;
+  try {
+    const path = join(root, 'image.png');
+    const png = Buffer.from('89504e470d0a1a0a00000000', 'hex');
+    await writeFile(path, png);
+    const before = sentMessages.length;
+    await assert.rejects(
+      connection.send!('17841400000000555@s.whatsapp.net', { type: 'image', url: path, caption: 'Keterangan' }),
+      { code: 'unsupported_caption' },
+    );
+    await assert.rejects(connection.send!('17841400000000555@s.whatsapp.net', { type: 'document', url: path }), {
+      code: 'unsupported_media',
+    });
+    assert.equal(sentMessages.length, before);
+    const mid = await connection.send!('17841400000000555@s.whatsapp.net', { type: 'image', url: path });
+    assert.equal(mid, messageIdOf('mid.sent1'));
+    assert.deepEqual(registered, [mid]);
+    const sent = sentMessages.at(-1)!;
+    assert.equal(sent.auth, 'Bearer long-token');
+    const payload = JSON.parse(sent.body);
+    assert.equal(payload.recipient.id, '17841400000000555');
+    assert.equal(payload.message.attachment.type, 'image');
+    const url = new URL(payload.message.attachment.payload.url);
+    assert.equal(url.origin, new URL(origin).origin);
+    publishedPath = (await outboundMedia.get(url.pathname.split('/').at(-1)!)).path;
+    await rm(path);
+    const downloaded = await request(app).get(url.pathname);
+    assert.equal(downloaded.status, 200);
+    assert.match(downloaded.headers['content-type'], /image\/png/);
+    assert.equal(downloaded.headers['cache-control'], 'private, no-store');
+    assert.deepEqual(downloaded.body, png);
+    assert.equal((await request(app).get('/instagram/media/1800000000000-' + '0'.repeat(64))).status, 404);
+    const webp = await sharp({ create: { width: 8, height: 8, channels: 4, background: '#ff000080' } })
+      .webp()
+      .toBuffer();
+    await writeFile(path, webp);
+    await connection.send!('17841400000000555@s.whatsapp.net', { type: 'image', url: path });
+    const convertedUrl = new URL(JSON.parse(sentMessages.at(-1)!.body).message.attachment.payload.url);
+    convertedPath = (await outboundMedia.get(convertedUrl.pathname.split('/').at(-1)!)).path;
+    const converted = await request(app).get(convertedUrl.pathname);
+    assert.match(converted.headers['content-type'], /image\/jpeg/);
+    assert.equal((await sharp(converted.body).metadata()).format, 'jpeg');
+  } finally {
+    connection.close();
+    if (previousOrigin === undefined) delete process.env.APP_ORIGIN;
+    else process.env.APP_ORIGIN = previousOrigin;
+    if (publishedPath) await rm(publishedPath, { force: true });
+    if (convertedPath) await rm(convertedPath, { force: true });
+    await rm(root, { recursive: true, force: true });
+  }
 });
 test('callback deauthorize dan data-deletion memverifikasi tanda tangan Meta', async () => {
   const bad = await request(app).post('/instagram/deauthorize').type('form').send({ signed_request: 'x.y' });

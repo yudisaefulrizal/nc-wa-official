@@ -22,6 +22,8 @@ export interface SessionInfo {
   filter: 'all' | 'private' | 'group';
 }
 export interface Connection {
+  // Kemampuan konektor aktif; node AI tetap netral terhadap platform tujuan.
+  mediaCaption?: 'inline' | 'separate';
   close(): void | Promise<void>;
   logout(): Promise<void>;
   typing?(jid: string, state: 'composing' | 'paused'): Promise<void>;
@@ -257,7 +259,9 @@ export class SessionManager {
             timeout = setTimeout(() => reject(new Error('timeout')), 30_000);
           }),
         ]);
-      } catch {
+      } catch (error) {
+        // Penolakan validasi transport pasti belum terkirim; teruskan agar kredit bisa dikembalikan.
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
         throw new ApiError(502, 'send_unknown', 'Hasil pengiriman belum pasti; jangan kirim ulang otomatis');
       } finally {
         clearTimeout(timeout);

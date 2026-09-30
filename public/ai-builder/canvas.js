@@ -30,13 +30,17 @@ function nodeSummary(n) {
     case 'context_memory':
       return 'Ringkasan S-P-O · ' + state.document.nodes.filter(x => x.context_memory === n.id).length + ' node';
     case 'router':
-      return tier + ' · ' + n.branches.length + ' cabang' + memory;
+      return tier + ' · ' + n.branches.length + ' cabang' + (n.routing_mode === 'tasks' ? ' · per tugas' : '') + memory;
     case 'agent':
       return tier + ' · ' + n.tools.length + ' tool' + memory;
     case 'context':
       return tier + ' · S-P-O';
     case 'extract':
-      return (n.fields ?? []).length + ' field · ' + tier;
+      return (
+        (n.extract_mode === 'tasks' ? 'Maks. ' + (n.max_tasks ?? 5) + ' tugas' : (n.fields ?? []).length + ' field') +
+        ' · ' +
+        tier
+      );
     case 'condition':
       return (n.rules ?? []).length + ' syarat · cocok ' + (n.match === 'any' ? 'salah satu' : 'semua');
     case 'compute':

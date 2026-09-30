@@ -71,7 +71,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
     }
     next();
   });
-  app.use('/api/auth', rateLimit({ windowMs: 900000, limit: 20 }));
+  app.use('/api/auth', rateLimit({ windowMs: 900000, limit: 120 }));
   publicAccountRoutes(app, {});
   sessionAuth(app, {});
   accountRoutes(app, { gateway });

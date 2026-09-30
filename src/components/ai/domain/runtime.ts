@@ -378,6 +378,8 @@ export async function handleMessage(
         for (const [index, item] of queuedMedia.entries()) {
           if (item.when !== when) continue;
           await guard();
+          const separateCaption = manager.connected(session).mediaCaption === 'separate';
+          const caption = item.caption.trim();
           const readFile = async () => {
             const file = await recordFilePath(account, prepared.profileId, item.ref);
             return { path: file.path, mimetype: file.mimetype, cleanup: async () => {} };
@@ -392,7 +394,7 @@ export async function handleMessage(
               type: item.type,
               url: item.ref,
               ...(item.type === 'document' ? { filename: item.filename } : {}),
-              ...(item.caption ? { caption: item.caption } : {}),
+              ...(!separateCaption && caption ? { caption } : {}),
             },
             'ai_media_' + index + '_' + id,
             item.kind === 'file' ? readFile : undefined,
@@ -405,8 +407,30 @@ export async function handleMessage(
               origin: 'ai',
               type: item.type,
               // Riwayat chat menampilkan keterangan media, atau nama filenya bila tanpa keterangan.
-              text: item.caption || item.filename,
+              text: separateCaption ? item.filename : caption || item.filename,
             }).catch(() => {});
+          // Caption baru dikirim setelah gambar pasti berhasil. Kredit, checkpoint, ID pesan, dan riwayat
+          // tetap dicatat per pesan; kegagalan caption tidak mengulang gambar atau menahan jawaban utama.
+          if (sent && separateCaption && caption) {
+            await guard();
+            const captionSent = await sendBilled(
+              account,
+              manager,
+              session,
+              'text',
+              { to: message.from, text: caption },
+              'ai_caption_' + index + '_' + id,
+              undefined,
+              guard,
+            ).catch(() => undefined);
+            if (captionSent)
+              await recordOutgoing(account, session, {
+                customer: message.from,
+                messageId: captionSent.messageId,
+                origin: 'ai',
+                text: caption,
+              }).catch(() => {});
+          }
         }
       };
       await sendMedia('before');

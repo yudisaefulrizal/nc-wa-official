@@ -7,7 +7,7 @@ import { db } from '../../../libraries/db.js';
 import { ApiError } from '../../../libraries/errors.js';
 import { log } from '../../../libraries/log.js';
 import type { Connection, Connector, Update } from '../../whatsapp/index.js';
-import { sendOfficialText } from './official-messaging.js';
+import { sendOfficialImage, sendOfficialText } from './official-messaging.js';
 import { sendMessage } from './zernio-client.js';
 import * as channelsSql from '../data-access/channels-queries.js';
 import * as officialSql from '../data-access/official-queries.js';
@@ -48,6 +48,7 @@ export function channelConnector(
     if (channel.status === 'disconnected') update({ disconnected: 401 });
     else update({ status: 'connected', phone: '@' + channel.username });
     const connection: Connection = {
+      mediaCaption: channel.provider === 'official' ? 'separate' : 'inline',
       close() {
         hub.detach(account, id, update);
       },
@@ -64,13 +65,24 @@ export function channelConnector(
         let platformId: string;
         if (current[0].provider === 'official') {
           // Instagram Login resmi: token dibaca ulang setiap kirim; izin yang dicabut atau kedaluwarsa menolak kiriman.
-          if (!('text' in content))
-            throw new ApiError(400, 'unsupported_media', 'Lampiran belum didukung untuk Instagram resmi');
+          if (!('text' in content)) {
+            if (content.type !== 'image')
+              throw new ApiError(400, 'unsupported_media', 'Instagram resmi mendukung teks dan gambar JPG/PNG');
+            if (content.caption?.trim())
+              throw new ApiError(
+                400,
+                'unsupported_caption',
+                'Kirim teks caption sebagai pesan terpisah dari gambar Instagram',
+              );
+          }
           const [official] = await officialSql.findOwned(db, [account, current[0].ig_account_id]);
           const row = official[0];
           if (!row || row.status !== 'active' || !row.token || new Date(row.expires_at).getTime() < Date.now())
             throw new ApiError(409, 'session_not_connected', 'Izin Instagram berakhir; hubungkan Instagram lagi');
-          platformId = await sendOfficialText(current[0].ig_account_id, decrypt(row.token), recipient, content.text);
+          platformId =
+            'text' in content
+              ? await sendOfficialText(current[0].ig_account_id, decrypt(row.token), recipient, content.text)
+              : await sendOfficialImage(current[0].ig_account_id, decrypt(row.token), recipient, content.url);
         } else {
           // Kunci dibaca ulang setiap kirim, supaya kunci yang baru diganti langsung dipakai.
           const key = decrypt(current[0].api_key);

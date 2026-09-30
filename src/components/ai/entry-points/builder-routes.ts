@@ -50,7 +50,7 @@ export function builderAdminRoutes(app: express.Express) {
     res.set('Content-Disposition', 'attachment; filename="profile.json"').json(state.draft);
   });
   // Buat data contoh otomatis untuk semua koleksi sekaligus (tidak menyimpan; editor memasukkannya ke draft).
-  app.post(base + '/:id/samples', rateLimit({ windowMs: 60000, limit: 20 }), async (req, res) => {
+  app.post(base + '/:id/samples', rateLimit({ windowMs: 60000, limit: 120 }), async (req, res) => {
     await builder.graphState(String(req.params.id));
     try {
       res.json(await generateSamples(req.body));
@@ -61,7 +61,7 @@ export function builderAdminRoutes(app: express.Express) {
     }
   });
   // Asisten AI: langkah dan hasil dikirim sebagai NDJSON; tidak menyimpan apa pun (owner memilih Terapkan di editor).
-  app.post(base + '/:id/assistant', rateLimit({ windowMs: 60000, limit: 10 }), async (req, res) => {
+  app.post(base + '/:id/assistant', rateLimit({ windowMs: 60000, limit: 120 }), async (req, res) => {
     await builder.graphState(String(req.params.id));
     const controller = new AbortController();
     res.on('close', () => {
@@ -88,7 +88,7 @@ export function builderAdminRoutes(app: express.Express) {
     }
     res.end();
   });
-  app.post(base + '/:id/run', rateLimit({ windowMs: 60000, limit: 10 }), async (req, res) => {
+  app.post(base + '/:id/run', rateLimit({ windowMs: 60000, limit: 120 }), async (req, res) => {
     await builder.graphState(String(req.params.id));
     const controller = new AbortController();
     res.on('close', () => {

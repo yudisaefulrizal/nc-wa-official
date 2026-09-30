@@ -273,3 +273,28 @@ Di kanvas, node AI punya dua port masuk memori: **Konteks** (hijau toska) dan **
 ## Fallback dari Agent
 
 Aktifkan **port Fallback** pada Agent dan hubungkan ke node Fallback (atau jalur penanganan lain). Agent dapat mengeluarkan `{fallback,question}` hanya bila port aktif dan runtime mengizinkan. Node Fallback tanpa pemetaan memakai alasan/pertanyaan Agent. Router meneruskan tiket menunggu sebagai data; JEV menilai keterkaitan dengan pertanyaan Noul, router biasa memakai `fallback_terkait`. Hanya ID tiket yang benar-benar tersedia diterima. Agent menerima tiket terkait beserta instruksi menghindari duplikasi.
+
+### Beberapa tugas dan konteks
+
+Ekstrak tetap memakai mode field secara bawaan. Mode `extract_mode: "tasks"` dengan `max_tasks` 1–5 (bawaan 5) menghasilkan `{tasks:[{id,task,context}]}`. ID ditentukan server sesuai urutan. Tugas terkait digabung bila melebihi batas; hasil kosong diperbolehkan. Mode Terstruktur memakai JSON Schema dan fallback prompt seperti ekstraksi field.
+
+Router dengan `routing_mode: "tasks"`, `tasks_source: "<id Ekstrak>"`, dan `max_attempts` 1–3 (bawaan 3) menjalankan tugas secara berurutan. Sumber harus tersedia di setiap jalur masuk. Setiap cabang langsung menuju Agent; port tambahan `done` (Selesai) berjalan sekali setelah antrean selesai. Mode `single` tetap memilih satu cabang seperti sebelumnya.
+
+Agent menerima `input.task` berisi tugas aktif, konteks, percobaan, dan pengecualian. `return_to_router: true` mengizinkan respons `{"return_to_router":"alasan"}`. Router menyimpan `{agent,reason}` di `exclusions` tugas itu dan menghilangkan semua cabang ke Agent tersebut untuk percobaan berikutnya. Agent tetap bisa menerima tugas lain. Tidak perlu edge balik; graf tetap tanpa siklus. Pengembalian setelah tool berhasil menulis data ditolak untuk mencegah transaksi dikerjakan ulang. Fallback ke tim yang sudah ada tetap menghentikan alur lewat jalur fallback.
+
+Setelah jawaban Agent diterima, runtime mengisi `answer`, `agent`, `attempts`, dan `status: "completed"`, lalu mengerjakan tugas berikutnya. Bila percobaan atau pilihan Agent habis, status menjadi `unresolved`; jawaban tidak direkayasa. Router menyediakan `tasks` dan `results` dalam urutan ekstraksi, termasuk alasan penolakan. Antrean dan pengecualian hanya berlaku selama satu eksekusi pesan. Batas global panggilan model, langkah, waktu, pembatalan, dan checkpoint tool tetap berlaku.
+
+Pola alur: `Input → Ekstrak tugas → Router → Agent per cabang`. Hubungkan `next` setiap Agent tugas serta `done` Router ke satu Agent penggabung, lalu Output. Saat dipanggil dalam antrean, hasil Agent dikumpulkan secara internal; edge next digunakan bila Agent dipanggil lewat alur biasa. Agent penggabung tidak membutuhkan jenis node baru. Contoh instruksi: `Gabungkan {{nodes.router.results}} menjadi satu jawaban runtut. Gunakan hasil completed, jelaskan unresolved dan informasi yang masih diperlukan. Jangan mengarang keberhasilan.`
+
+### Kirim media mengikuti kanal sesi
+
+Node yang sama dapat digunakan pada WhatsApp dan Instagram. Runtime membaca kemampuan `mediaCaption` dari konektor sesi aktif, bukan pilihan platform dari model atau definisi graf. WhatsApp dan Zernio menggunakan caption inline; Instagram Login resmi mengirim gambar terlebih dahulu lalu caption sebagai pesan teks terpisah, sebelum/sesudah jawaban sesuai `send_when`. Caption hanya dikirim setelah gambar berhasil; setiap pesan punya reservasi kredit, idempotency key, checkpoint, dan catatan chat sendiri. Caption terpisah memakai satu kredit pesan tambahan. Kegagalan gambar/caption tidak menahan jawaban utama dan gambar tidak diulang otomatis.
+
+Konektor Instagram resmi membuat URL sementara seperti sebelumnya. WebP statis otomatis diubah ke JPEG, tanpa mengubah sumber; transparansi menjadi putih. JPEG/PNG dipertahankan. Sumber dan hasil dibatasi 8 MB, konversi dibatasi 25 juta piksel, dan WebP animasi ditolak. Dukungan ini tidak menambahkan video/audio/dokumen pada konektor resmi. Simulasi/Uji Coba hanya mengantrekan media; penyesuaian dilakukan saat dikirim melalui sesi sesungguhnya.
+
+
+### Panduan skill dan Asisten AI Builder
+
+`profileSkillFiles()` pada `domain/builder/skill.ts` menjadi sumber bersama untuk ZIP skill dan system prompt Asisten AI Builder. Selain `SKILL.md` dan `reference/format.md`, paket berisi `reference/task-routing.md`, `examples/cs-spo.json`, dan `examples/cs-multi-tugas.json`. Panduan tugas menjelaskan mode, ID sumber, port done, pengembalian internal tanpa siklus, hasil unresolved, batas global, penempatan Context setelah penggabung, serta penempatan media dan batas tool Agent. Contoh tugas mempertahankan koleksi, tool, fallback, Sapaan/Penutup, dan memori konteks.
+
+Instruksi khusus Asisten di `assistant.ts` memakai kontrak yang disertakan pada setiap permintaan, mengesampingkan asumsi lama dari riwayat, dan mengarahkan perubahan lewat usulan draft (bukan meminta ekspor/impor). Pembaruan jenis node, mode, port, kemampuan tool, atau kanal harus disertai pembaruan panduan ini. Tes memeriksa berkas ZIP, menjalankan contoh tugas dengan model tiruan, serta memastikan Asisten menerima seluruh berkas panduan dan mendapat umpan balik untuk memperbaiki siklus. Ini bukan pengujian pemahaman model AI sungguhan.

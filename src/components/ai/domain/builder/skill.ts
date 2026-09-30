@@ -1,5 +1,5 @@
 // Skill AI untuk membuat profil dengan bantuan ChatGPT/Claude: SKILL.md (dengan pola inti konteks S-P-O), referensi
-// format, dan satu contoh lengkap, dikemas sebagai ZIP berformat skill Claude. Daftar node, operator, tipe, tier, variabel, dan batas diambil dari
+// format, panduan routing tugas, dan contoh lengkap, dikemas sebagai ZIP berformat skill Claude. Daftar node, operator, tipe, tier, variabel, dan batas diambil dari
 // kontrak di definition.ts; peta deskripsi di bawah bertipe Record atas konstanta itu, jadi node atau operator baru
 // tanpa deskripsi gagal di tsc dan skill tidak pernah tertinggal dari validator.
 import { createZip } from '../../../../libraries/zip.js';
@@ -52,7 +52,8 @@ const nodeDocs: Record<NodeType, NodeDoc> = {
     purpose: 'Titik awal alur: pesan pelanggan masuk di sini. Wajib tepat satu.',
     keys: 'Tidak ada kunci khusus.',
     ports: '`next`',
-    outputs: 'Pakai `{{input.message}}`, `{{input.context}}`, `{{input.history}}` (bukan `nodes.<id>`).',
+    outputs:
+      'Pakai `{{input.message}}`, `{{input.context}}`, `{{input.history}}` (bukan `nodes.<id>`). Selama antrean Router: `input.task` berisi tugas aktif, termasuk task, context, attempts, dan exclusions; di luar antrean nilainya null.',
   },
   memory: {
     name: 'Memori percakapan',
@@ -72,15 +73,17 @@ const nodeDocs: Record<NodeType, NodeDoc> = {
   },
   router: {
     name: 'Router',
-    purpose: 'AI memilih satu cabang sesuai maksud pesan pelanggan.',
-    keys: '`branches`: minimal 2 `{ "id", "label", "description" }`; `description` menjelaskan kapan cabang dipilih. `prompt`: instruksi pemilihan. `tier` biasanya `cheap` atau `decision`. `context_memory`: Memori konteks agar Router menerima ringkasan S-P-O (`input.context`); `memory` (riwayat) opsional.',
-    ports: 'satu port per `branches[].id`',
-    outputs: '`branch`, `fallback_terkait`',
+    purpose: 'AI memilih satu cabang atau mengarahkan setiap tugas hasil Ekstrak ke Agent yang sesuai.',
+    keys: '`branches`: minimal 2 `{ "id", "label", "description" }`; `description` menjelaskan kapan cabang dipilih. `prompt`: instruksi pemilihan. `tier` biasanya `cheap` atau `decision`. `context_memory`: Memori konteks agar Router menerima ringkasan S-P-O (`input.context`); `memory` (riwayat) opsional. `routing_mode: "tasks"` mengaktifkan antrean; `tasks_source` wajib ID Ekstrak mode tugas yang sudah berjalan; `max_attempts` 1–3 (bawaan 3) per tugas. Cabang harus langsung ke Agent. Agent selesai otomatis kembali ke antrean, lalu port `done` menuju Agent penggabung. Pengecualian Agent disimpan per tugas, bukan global.',
+    ports:
+      'satu port per `branches[].id`; tambahan `done` (Selesai) pada mode tugas. ID done tidak boleh dipakai cabang.',
+    outputs:
+      '`branch`, `fallback_terkait`; mode tugas: `tasks` dan `results` berisi id, task, context, status (pending/completed/unresolved), attempts, exclusions [{agent,reason}], answer, agent.',
   },
   agent: {
     name: 'Agent',
     purpose: 'AI menyusun jawaban untuk pelanggan.',
-    keys: '`prompt` wajib: tugas node ini, data yang dipakai, dan batasannya. Jangan menulis gaya bahasa, nama asisten, atau sapaan; itu diatur klien di Perilaku AI. `tier`, `memory`. `tools`: daftar id node Data yang boleh dipanggil Agent. `fallback: true` menambah port `fallback` agar AI bisa meneruskan ke tim bila tidak bisa menjawab.',
+    keys: '`prompt` wajib: tugas node ini, data yang dipakai, dan batasannya. Jangan menulis gaya bahasa, nama asisten, atau sapaan; itu diatur klien di Perilaku AI. `tier`, `memory`. `return_to_router: true` mengizinkan Agent tugas mengembalikan JSON `{"return_to_router":"alasan"}` saat di luar kemampuan. Tidak perlu edge balik (graf tetap tanpa siklus). Jangan mengembalikan tugas sesudah tool berhasil menulis. Agent penggabung tetap node Agent biasa: prompt membaca `{{nodes.<router>.results}}`, merangkum completed dan menjelaskan unresolved tanpa mengarang. Hubungkan port done Router serta next Agent tugas ke Agent penggabung; penggabung hanya dijalankan sekali. `tools`: daftar id node Data yang boleh dipanggil Agent. `fallback: true` menambah port `fallback` agar AI bisa meneruskan ke tim bila tidak bisa menjawab.',
     ports: '`next`; ditambah `fallback` bila `fallback: true`',
     outputs: '`answer`, `fallback`, `question`',
   },
@@ -151,9 +154,9 @@ const nodeDocs: Record<NodeType, NodeDoc> = {
   extract: {
     name: 'Ekstrak',
     purpose: 'AI mengubah kalimat pelanggan menjadi isian terstruktur (misalnya nama, tanggal, jumlah).',
-    keys: '`fields`: `[{ "id", "label", "type", "required", "hint", "options" }]` dengan tipe Ekstrak; `prompt` opsional; `tier` umumnya `structured`; `memory` opsional agar kalimat sebelumnya ikut dibaca.',
+    keys: '`fields`: `[{ "id", "label", "type", "required", "hint", "options" }]` dengan tipe Ekstrak; `prompt` opsional; `tier` umumnya `structured`; `memory` opsional agar kalimat sebelumnya ikut dibaca. `extract_mode: "tasks"` menghasilkan beberapa tugas beserta konteks, tanpa fields wajib; `max_tasks` 1–5 (bawaan 5). Model mengembalikan `{"tasks":[{"task":"permintaan","context":"konteks"}]}`; server menambahkan ID task_1 dan seterusnya. Mode bawaan fields mempertahankan perilaku lama.',
     ports: '`next`',
-    outputs: 'setiap `fields[].id`, dan `missing` (daftar field wajib yang belum disebut)',
+    outputs: 'Mode fields: setiap `fields[].id` dan `missing`; mode tasks: `tasks` berupa daftar `{id,task,context}`.',
   },
   compute: {
     name: 'Set / Hitung',
@@ -165,7 +168,7 @@ const nodeDocs: Record<NodeType, NodeDoc> = {
   media: {
     name: 'Kirim media',
     purpose: 'Mengirim gambar atau dokumen ke pelanggan bersama jawaban.',
-    keys: '`value`: variabel field File (misalnya `{{nodes.cari.first.data.brosur}}`) atau URL HTTPS, boleh beberapa; `caption`; `send_when`: `before`/`after`; `media_as`: `auto`/`image`/`document`. Maksimal 3 file per balasan dan tidak dikirim bila diteruskan ke tim.',
+    keys: '`value`: variabel field File (misalnya `{{nodes.cari.first.data.brosur}}`) atau URL HTTPS, boleh beberapa; `caption`; `send_when`: `before`/`after`; `media_as`: `auto`/`image`/`document`. Maksimal 3 file per balasan dan tidak dikirim bila diteruskan ke tim. Kanal tujuan mengikuti sesi secara otomatis. Instagram resmi mengirim caption sebagai pesan teks terpisah setelah gambar berhasil (1 kredit pesan tambahan), dan WebP statis dikonversi ke JPEG tanpa mengubah sumber. Batas sumber dan hasil 8 MB. Dokumen, audio, video, serta WebP animasi belum didukung konektor resmi.',
     ports: '`next`',
     outputs: '`files`, `count`, `skipped`',
   },
@@ -276,8 +279,8 @@ const variableDocs: Record<string, string> = {
   'system.now': 'tanggal-jam sekarang (WIB)',
   'system.time': 'jam sekarang (WIB, JJ:MM)',
   'system.weekday': 'nama hari ini dalam bahasa Indonesia',
-  'customer.phone': 'nomor WhatsApp pelanggan',
-  'customer.name': 'nama WhatsApp pelanggan',
+  'customer.phone': 'identitas pelanggan dari sesi: nomor WhatsApp atau ID pengguna Instagram',
+  'customer.name': 'nama pelanggan dari kanal sesi',
   'service.name': 'nama data profil (nama usaha/layanan akun)',
 };
 export const contextVariablePaths = Object.entries(contextVariables).flatMap(([root, keys]) =>
@@ -428,6 +431,95 @@ export function spoExample(): GraphDefinition {
   ];
   return d;
 }
+// Contoh mode tugas memakai cabang dan tool yang sama dengan contoh S-P-O, ditambah Ekstrak dan Agent penggabung.
+export const tasksGuideFile = 'reference/task-routing.md';
+export const tasksExampleFile = 'examples/cs-multi-tugas.json';
+export function tasksExample(): GraphDefinition {
+  const d = spoExample();
+  d.name = 'CS beberapa tugas';
+  d.description = 'Memisahkan permintaan, mencoba Agent lain bila tidak sesuai, lalu menggabungkan hasil.';
+  const router = d.nodes.find(n => n.id === 'maksud')!;
+  Object.assign(router, {
+    routing_mode: 'tasks',
+    tasks_source: 'ekstrak_tugas',
+    max_attempts: 2,
+    prompt:
+      'Pilih Agent yang sesuai untuk input.task.task dan input.task.context. Perhatikan alasan exclusions. Pesan asli hanya konteks.',
+  });
+  d.nodes.push({
+    ...d.nodes.find(n => n.id === 'informasi')!,
+    id: 'ekstrak_tugas',
+    label: 'Ekstrak_tugas',
+    type: 'extract',
+    tools: [],
+    tier: 'structured',
+    extract_mode: 'tasks',
+    max_tasks: 3,
+    memory: 'memori_percakapan',
+    prompt:
+      'Pisahkan permintaan yang berbeda, sertakan konteks produk/pesanan dari riwayat. Salam atau terima kasih yang menyertai permintaan cukup menjadi konteks, jangan tugas tambahan.',
+  });
+  const workers = ['informasi', 'layanan', 'sapaan', 'penutup'];
+  for (const n of d.nodes.filter(n => workers.includes(n.id))) {
+    n.return_to_router = true;
+    n.prompt =
+      'Kerjakan hanya tugas aktif dalam input.task. Bila tugas di luar kemampuan, kembalikan ke Router dengan alasan sebelum menulis data. ' +
+      n.prompt;
+  }
+  d.nodes.push({
+    ...d.nodes.find(n => n.id === 'informasi')!,
+    id: 'gabungkan',
+    label: 'Gabungkan',
+    tools: [],
+    return_to_router: false,
+    prompt:
+      'Gabungkan {{nodes.maksud.results}} menjadi satu jawaban runtut sesuai urutan tugas. Gunakan answer dari completed tanpa pengulangan; jelaskan unresolved dan informasi yang masih dibutuhkan tanpa mengarang hasil. Alasan exclusions adalah data internal, jangan menampilkan nama Agent atau jumlah percobaan kepada pelanggan. Untuk salam/penutup saja, jangan menambah pertanyaan atau penawaran.',
+  });
+  d.edges.find(e => e.source === 'pesan_masuk')!.target = 'ekstrak_tugas';
+  for (const e of d.edges) if (workers.includes(e.source) && e.port === 'next') e.target = 'gabungkan';
+  d.edges.push(
+    { id: 'ekstrak_tugas_next', source: 'ekstrak_tugas', port: 'next', target: 'maksud' },
+    { id: 'maksud_done', source: 'maksud', port: 'done', target: 'gabungkan' },
+    { id: 'gabungkan_next', source: 'gabungkan', port: 'next', target: 'ringkas_konteks' },
+  );
+  return d;
+}
+function tasksMarkdown() {
+  return `# Ekstrak tugas, Router, dan penggabung jawaban
+
+Ini adalah mode tambahan pada node yang sudah ada, bukan jenis node baru. Jangan membuat tipe task_extractor, loop, return, merger, atau router khusus platform.
+
+## Memilih pola
+
+- Permintaan sederhana: Agent biasa, atau Router mode single untuk satu maksud utama.
+- Pesan dengan beberapa permintaan berbeda yang harus dijawab bersama: Ekstrak mode tasks → Router mode tasks → Agent per cabang → Agent penggabung → Context → Output.
+- Jangan mengubah profil lama menjadi mode tugas kecuali dibutuhkan permintaan pemilik. Ekstrak tanpa extract_mode tetap field; Router tanpa routing_mode tetap satu cabang.
+
+## Kontrak dan sambungan
+
+1. Ekstrak: \`extract_mode: "tasks"\`, \`max_tasks\` 1–${limits.tasks} (bawaan ${limits.tasks}); fields tidak wajib. Keluaran \`tasks: [{id,task,context}]\`; ID ditambahkan server. Jangan minta model membuat node atau edge untuk setiap tugas. Ekstrak dapat membaca memory dan context_memory yang tersambung.
+2. Router: \`routing_mode: "tasks"\`, \`tasks_source: "ekstrak_tugas"\` (ID node, bukan template/path variabel), \`max_attempts\` 1–${limits.taskAttempts} termasuk penugasan pertama. Ekstrak harus tersedia pada semua jalur masuk Router. Tetap minimal dua branches; setiap cabang langsung menuju Agent. ID cabang done dicadangkan.
+3. Agent pekerja membaca \`input.task.task\` dan \`input.task.context\`; \`input.message\` tetap pesan asli. Set \`return_to_router: true\` bila boleh menolak tugas di luar kemampuan. Jawab \`{"return_to_router":"alasan"}\` sebelum ada tool yang berhasil menulis. Ini respons Agent saat runtime, bukan JSON definisi profil.
+4. Router mengembalikan tugas ke antreannya secara internal dan mengecualikan Agent yang menolak hanya untuk tugas itu. Jangan membuat edge Agent → Router atau port return_to_router; graf tetap tanpa siklus. Agent bisa menerima tugas lain. Tugas diproses berurutan, bukan paralel.
+5. Hubungkan \`done\` Router dan \`next\` semua Agent pekerja ke Agent penggabung. Saat menjadi pekerja antrean, next tidak dijalankan per tugas; runtime mengumpulkan jawaban terlebih dahulu. Port done berjalan sekali setelah semua tugas selesai/dihentikan oleh batas per tugas, termasuk daftar kosong.
+6. Penggabung adalah \`type: "agent"\` biasa, tanpa tools bila hanya merangkum. Prompt membaca \`{{nodes.maksud.results}}\` (ganti maksud dengan ID Router). Jangan menggabungkan \`nodes.<agent>.answer\` dari masing-masing cabang: tidak semua Agent pasti dijalankan dan Agent yang sama dapat menangani beberapa tugas.
+7. Context berada setelah penggabung agar ringkasan S-P-O memakai jawaban gabungan; selanjutnya Output. Jalur fallback yang sudah ada tetap menuju Fallback dan mengakhiri alur, bukan mengembalikan tugas ke antrean.
+
+## Hasil dan batas
+
+Setiap hasil memiliki id, task, context, status, attempts, exclusions [{agent,reason}], answer, agent. Status akhir completed atau unresolved. Penggabung menggunakan answer yang selesai dan menjelaskan kebutuhan informasi tugas unresolved; jangan mengarang keberhasilan atau memperlihatkan detail routing internal. Pengecualian/percobaan berlaku satu eksekusi pesan, bukan memori permanen.
+
+Antrean kosong tetap menuju done; penggabung boleh meminta penjelasan. Bila batas per tugas tercapai atau seluruh Agent sudah menolak, lanjutkan tugas berikutnya dengan status unresolved. Batas global ${runtimeLimits.modelCalls} panggilan model, ${runtimeLimits.steps} langkah, dan ${runtimeLimits.seconds} detik tetap berlaku; batas global dapat menghentikan seluruh alur. Hitung biaya Ekstrak + Router/Agent setiap percobaan + penggabung + Context + panggilan tool. Tidak semua kombinasi batas tugas/percobaan dapat mencapai maksimum sekaligus.
+
+## Media dan tool pada alur tugas
+
+Agent.tools hanya menerima ID node Data yang memang didukung, bukan Router, Ekstrak, Kirim media, atau Agent penggabung. Jangan menaruh Kirim media di antara cabang Router tugas dan Agent. Tempatkan node media pada jalur nyata yang dijalankan setelah done/penggabung, dengan sumber file dari node Data yang pasti tersedia pada jalur itu. Pengembalian ke Router bukan mekanisme retry kirim media.
+
+Gunakan satu node media untuk WhatsApp/Instagram: tujuan ditentukan sesi saat kirim, bukan input model. WhatsApp/Zernio memakai caption inline; Instagram resmi mengirim caption sebagai teks terpisah sesudah gambar berhasil (satu kredit pesan tambahan). send_when menentukan posisi gambar beserta caption terhadap jawaban. WebP statis dikonversi ke JPEG; JPEG/PNG dipertahankan, sumber/hasil maksimal 8 MB. Jangan mengarang node platform, URL sementara Meta, atau dukungan video/dokumen Instagram resmi. Mode auto cocok untuk field File/gambar dan URL berakhiran gambar; gunakan media_as image bila URL gambar tidak memiliki ekstensi. Simulasi tidak mengirim melalui kanal nyata.
+
+Contoh lengkap yang dapat diimpor: [CS beberapa tugas](../${tasksExampleFile}). Contoh ini mempertahankan tool koleksi, Sapaan/Penutup, fallback, dan memori konteks dari pola satu cabang.
+`;
+}
 const table = (head: string[], rows: string[][]) =>
   [
     '| ' + head.join(' | ') + ' |',
@@ -438,12 +530,12 @@ const table = (head: string[], rows: string[][]) =>
 function skillMarkdown() {
   return `---
 name: ${skillName}
-description: Menyusun dan mengubah profil AI NC-WA dalam format JSON ncwa-profile versi 1 (graf node Router, Agent, Data, Kondisi, Ekstrak, dan lainnya, beserta koleksi data) untuk diimpor di Editor profil NC-WA. Gunakan saat pengguna ingin membuat, merancang, memperbaiki, atau mengubah profil atau alur AI NC-WA, atau menyebut JSON ncwa-profile.
+description: Menyusun dan mengubah profil AI NC-WA untuk WhatsApp/Instagram dalam format JSON ncwa-profile versi 1 (Router, Agent, Data, Kondisi, Ekstrak, routing beberapa tugas, penggabungan jawaban, dan media sesuai kanal, beserta koleksi data) untuk diimpor di Editor profil NC-WA. Gunakan saat pengguna ingin membuat, merancang, memperbaiki, atau mengubah profil atau alur AI NC-WA, atau menyebut JSON ncwa-profile.
 ---
 
 # Profil AI NC-WA
 
-Profil AI NC-WA adalah graf yang menjawab pelanggan WhatsApp. Pesan masuk lewat node Input, diproses node (AI, logika, data, media), lalu berakhir di Output (jawaban) atau Fallback (diteruskan ke tim manusia). Profil juga mendefinisikan **koleksi**: struktur data (misalnya Produk, Booking) yang isinya diisi tiap akun di dashboard, lalu dibaca atau ditulis node Data.
+Profil AI NC-WA adalah graf yang menjawab pelanggan WhatsApp atau Instagram sesuai sesi tujuan. Pesan masuk lewat node Input, diproses node (AI, logika, data, media), lalu berakhir di Output (jawaban) atau Fallback (diteruskan ke tim manusia). Profil juga mendefinisikan **koleksi**: struktur data (misalnya Produk, Booking) yang isinya diisi tiap akun di dashboard, lalu dibaca atau ditulis node Data.
 
 Hasil kerja skill ini adalah satu JSON \`ncwa-profile\` yang diimpor pemilik di **Profil AI → Buat profil → Impor JSON / Tempel JSON**. Profil hasil impor selalu berupa draft baru; pemilik mengujinya lalu menerbitkannya sendiri.
 
@@ -472,11 +564,19 @@ Ukur setiap keputusan rancangan dengan lima hal ini. Setiap node harus punya ala
 - **Buat file (JSON, Markdown)**: pasang bila hasil alur perlu menjadi file, misalnya Agent penulis artikel yang hasilnya dijadikan .md, atau data pesanan yang diekspor sebagai .json. Isi file dibentuk dari variabel (biasanya jawaban Agent atau hasil node Data), jadi AI cukup menulis isinya sekali. Hasilnya (\`{{nodes.<id>.file}}\`) dikirim lewat Kirim media atau disimpan ke field File koleksi lewat node Data; file yang tidak disimpan ke record terhapus setelah sehari.
 - **Kirim media**: pasang bila file menjawab lebih baik dari teks (brosur, daftar harga, foto produk, denah, formulir). Simpan file di field File koleksi agar klien bisa menggantinya sendiri; URL tetap hanya untuk file umum. Kirim hanya di jalur yang memang meminta atau menawarkan file, bukan di setiap jawaban.
 
+### Pengiriman gambar ke Instagram resmi
+
+- Profil untuk Instagram Login resmi boleh memakai node **Kirim media** untuk gambar JPG/PNG maksimal 8 MB per gambar. Gunakan \`media_as: "image"\`; file dapat berasal dari field File koleksi atau URL HTTPS.
+- Node Kirim media otomatis mengikuti konektor sesi: caption menyatu pada WhatsApp; Instagram resmi mengirim gambar lalu caption sebagai teks terpisah. Setiap pesan memakai kredit sendiri. Atur \`send_when\` untuk menempatkan pasangan gambar/caption sebelum atau sesudah jawaban. Caption tidak dikirim bila gambar gagal atau hasil kirim belum pasti.
+- WebP statis otomatis dikonversi ke JPEG (sumber dan hasil maksimal 8 MB); file sumber tetap utuh. Jangan mengirim PDF, dokumen, audio, video, atau WebP animasi melalui konektor Instagram resmi. Jika sumbernya hanya dokumen, berikan tautan publik yang memang boleh dibagikan dalam jawaban atau teruskan ke tim; jangan menjanjikan lampiran berhasil dikirim.
+- Aplikasi menyiapkan URL gambar sementara yang berlaku 15 menit untuk diambil Meta. Jangan membuat URL tersebut dalam definisi profil atau membagikannya kepada pelanggan. Alamat publik aplikasi (APP_ORIGIN) harus dapat dijangkau Meta.
+- Batas ini khusus konektor Instagram Login resmi, bukan batas semua kanal. Pastikan kanal tujuan saat merancang profil. Pengujian otomatis memakai Meta tiruan; jangan menyatakan pengiriman ke akun Instagram nyata sudah teruji.
+
 ## Alur kerja
 
 1. Pahami kebutuhan dulu. Tanyakan bila belum jelas: jenis usaha, pertanyaan yang sering datang, data yang perlu dicari atau dicatat (menjadi koleksi), kapan harus diteruskan ke tim, apakah pelanggan perlu mengirim berkas, dan berkas apa yang sering diminta pelanggan (brosur, katalog, formulir). Gaya bahasa tidak perlu ditanyakan karena diatur tiap klien (lihat bagian Perilaku AI klien).
 2. Jelaskan rancangan singkat dalam kata-kata (node, cabang, koleksi) sebelum menulis JSON yang panjang.
-3. Tulis JSON lengkap mengikuti [referensi format](reference/format.md). Mulai dari [contoh S-P-O](${spoExampleFile}) lalu sesuaikan cabang, prompt, dan koleksinya dengan usaha pengguna.
+3. Tulis JSON lengkap mengikuti [referensi format](reference/format.md). Pilih [contoh S-P-O satu cabang](${spoExampleFile}) atau [contoh beberapa tugas](${tasksExampleFile}) sesuai kebutuhan. Baca [panduan routing tugas](${tasksGuideFile}) untuk mode tasks, pengembalian, penggabung, dan penempatan media. Sesuaikan cabang, prompt, serta koleksi dengan usaha pengguna.
 4. Jalankan daftar periksa di bawah, lalu berikan JSON dalam satu blok \`\`\`json tanpa komentar.
 5. Minta pemilik mengimpor dan menekan **Uji**. Bila editor menampilkan masalah, minta pemilik menempelkan pesannya lalu perbaiki JSON.
 
@@ -492,12 +592,12 @@ Setiap akun klien mengisi **Perilaku AI** di dashboard: gaya bahasa, nama asiste
 
 ## Pola inti NC-WA: konteks S-P-O
 
-Pelanggan WhatsApp sering membalas pendek ("ya", "1 aja", "yang itu", "lanjut"). Tanpa konteks, Router tidak tahu maksudnya. NC-WA menyelesaikannya dengan dua memori terpisah:
+Pelanggan sering membalas pendek ("ya", "1 aja", "yang itu", "lanjut"). Tanpa konteks, Router tidak tahu maksudnya. NC-WA menyelesaikannya dengan dua memori terpisah:
 
 - **Memori percakapan** (\`type: "memory"\`): riwayat pesan. Hanya dibaca node lewat kunci \`memory\`; ditulis sistem.
 - **Memori konteks** (\`type: "context_memory"\`, satu per profil): ringkasan S-P-O (Subjek-Predikat-Objek) posisi percakapan, misalnya \`Pelanggan menunggu konfirmasi pesanan.\`. **Hanya ditulis node Context**; dibaca node lain lewat kunci \`context_memory\` sebagai \`input.context\`.
 
-Pakai pola ini untuk setiap profil yang punya Router:
+Pakai pola ini untuk Router satu cabang. Untuk routing beberapa tugas, baca [panduan tugas](${tasksGuideFile}); tambahkan Ekstrak sebelum Router serta Agent penggabung sebelum Context:
 
 \`\`\`
 Input → Router (memori konteks) → Agent per cabang (memori konteks) → Context spo → Output
@@ -532,7 +632,10 @@ Context: context_memory = memori konteks (ditulis); cukup pesan terakhir, tanpa 
 - [ ] Router punya minimal dua cabang dan setiap id cabang dipakai sebagai port satu edge.
 - [ ] Bila ada Router: ada satu node \`context_memory\` dan node Context yang \`context_memory\`-nya menunjuk ke sana; Router dan Agent merujuk \`context_memory\`; Router tidak merujuk \`memory\`; setiap jalur jawaban melewati Context sebelum Output.
 - [ ] Cabang yang memakai tool yang sama sudah digabung; \`description\` cabang jelas dan tidak tumpang tindih.
-- [ ] Agent dan Context punya \`prompt\`; tier \`decision\` hanya untuk Router.
+- [ ] Agent punya \`prompt\`; Context tidak membutuhkan prompt karena instruksinya ditanam sistem; tier \`decision\` hanya untuk Router.
+- [ ] Mode tugas: tasks_source adalah ID Ekstrak tasks yang tersedia; done Router dan next pekerja menuju Agent penggabung; tidak ada edge balik ke Router; Context berjalan setelah penggabung.
+- [ ] Penggabung membaca results Router dan menangani unresolved/daftar kosong; jangan bergantung pada answer satu Agent yang mungkin tidak dijalankan.
+- [ ] Kirim media mengikuti kanal sesi secara otomatis; caption Instagram resmi menjadi teks terpisah berbayar; WebP statis dikonversi. Tidak ada tipe node platform baru atau URL sementara buatan model.
 - [ ] Node Data yang dipanggil Agent ada di \`tools\` Agent dan tidak punya edge; node Data di alur punya edge masuk dan keluar.
 - [ ] \`collection\`, field filter, \`sort_field\`, dan \`sum_field\` merujuk id yang ada; \`sum_field\` bertipe angka; \`value\` create/update adalah string JSON valid.
 - [ ] Field \`choice\`/\`multichoice\` punya \`options\`; relasi menunjuk koleksi yang ada, dan koleksi umum tidak berelasi ke koleksi milik pelanggan.
@@ -639,6 +742,7 @@ ${code(extractFieldTypes)}. \`choice\`/\`multichoice\` wajib punya \`options\`. 
 ## Variabel
 
 - \`{{input.message}}\`, \`{{input.context}}\`, \`{{input.history}}\`: pesan pelanggan, ringkasan konteks, dan riwayat.
+- \`{{input.task}}\`: tugas aktif saat Router/Agent memproses antrean, null di luar antrean. Baca \`{{input.task.task}}\` dan \`{{input.task.context}}\` hanya saat menangani tugas; penggabung memakai \`{{nodes.<router>.results}}\`.
 ${contextVariablePaths.map(p => '- `{{' + p + '}}`: ' + variableDocs[p]).join('\n')}
 - \`{{data.<koleksi_teks>}}\` dan \`{{data.<koleksi_isian>.<field>}}\`: isi koleksi teks/isian langsung di prompt atau nilai lain tanpa node, misalnya \`Alamat kami: {{data.info_usaha.alamat}}\`. Cocok untuk isi pendek; teks panjang sebaiknya lewat node Data teks dengan kata kunci.
 - \`{{nodes.<id>.<keluaran>}}\`: keluaran node lain sesuai tabel node, misalnya \`{{nodes.layanan.answer}}\`, \`{{nodes.cari_produk.first.data.harga}}\`, \`{{nodes.isian.tanggal}}\`.
@@ -657,6 +761,8 @@ ${table(
     ['Tool per Agent', String(limits.tools)],
     ['Filter / syarat', limits.filters + ' / ' + limits.rules],
     ['Field Ekstrak', String(limits.extractFields)],
+    ['Tugas per pesan', String(limits.tasks)],
+    ['Percobaan routing per tugas', String(limits.taskAttempts)],
     ['Langkah Set / Hitung', String(limits.steps)],
     ['Batas hasil node Data (`limit`)', String(maxToolLimit)],
     [
@@ -698,6 +804,8 @@ export function profileSkillFiles(): { path: string; content: string }[] {
   return [
     { path: 'SKILL.md', content: skillMarkdown() },
     { path: 'reference/format.md', content: formatMarkdown() },
+    { path: tasksGuideFile, content: tasksMarkdown() },
+    { path: tasksExampleFile, content: JSON.stringify(tasksExample(), null, 2) + '\n' },
     { path: spoExampleFile, content: JSON.stringify(spoExample(), null, 2) + '\n' },
   ];
 }

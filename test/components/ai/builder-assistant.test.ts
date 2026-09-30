@@ -1,5 +1,6 @@
 // Asisten AI Editor profil: memakai tier Cerdas dengan jawaban panjang, membaca panduan skill dan draft, membalas
 // jawaban saja atau usulan definisi yang sudah diperiksa, memperbaiki sendiri bila bermasalah, dan tidak menyimpan.
+import { profileSkillFiles, tasksExample } from '../../../src/components/ai/domain/builder/skill.js';
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -172,4 +173,50 @@ test('Positions are optional in the format; restored by id and never taken from 
   const restored = restorePositions(moved, d);
   assert.equal(restored.nodes[0].x, d.nodes[0].x);
   assert.equal(restored.nodes.at(-1)!.x, undefined);
+});
+
+// Panduan kanonis ikut setiap permintaan, termasuk retry, supaya AI editor tidak memakai kontrak lama dari riwayat.
+test('Assistant receives current skill files and repairs a task return cycle while preserving media options', async () => {
+  const current = blankDefinition('Profil lama');
+  const good = tasksExample();
+  good.nodes.push({
+    ...good.nodes.find(n => n.type === 'output')!,
+    id: 'kirim_gambar',
+    label: 'Kirim_gambar',
+    type: 'media',
+    value: 'https://example.invalid/brosur.webp',
+    caption: 'Brosur produk',
+    media_as: 'image',
+    send_when: 'after',
+  });
+  good.edges.find(e => e.source === 'ringkas_konteks')!.target = 'kirim_gambar';
+  good.edges.push({ id: 'kirim_gambar_next', source: 'kirim_gambar', port: 'next', target: 'jawaban' });
+  const broken = structuredClone(good);
+  broken.edges.find(e => e.source === 'informasi' && e.port === 'next')!.target = 'maksud';
+  const { result, calls } = await run(
+    [
+      JSON.stringify({ reply: 'Menambah tugas.', definition: broken }),
+      JSON.stringify({ reply: 'Routing tugas dan gambar menyesuaikan kanal.', definition: good }),
+    ],
+    current,
+    'Tambahkan routing beberapa tugas serta gambar otomatis untuk WhatsApp dan Instagram',
+  );
+  assert.equal(calls.length, 2);
+  assert.match(calls[1].messages.at(-1)!.content, /Siklus tidak diizinkan/);
+  const prompt = calls[0].messages[0].content;
+  for (const file of profileSkillFiles())
+    assert.ok(prompt.includes('===== ' + file.path + ' =====\n' + file.content), file.path);
+  assert.match(prompt, /jangan meminta ekspor\/impor JSON/);
+  assert.match(prompt, /jangan menyatakan routing tugas atau penyesuaian gambar lintas kanal belum tersedia/);
+  assert.match(prompt, /Jangan meminta pemilik membuat cabang WhatsApp\/Instagram/);
+  assert.deepEqual(result.issues, []);
+  assert.deepEqual(validateGraph(result.definition!), []);
+  const router = result.definition!.nodes.find(n => n.id === 'maksud')!;
+  assert.deepEqual([router.routing_mode, router.tasks_source, router.max_attempts], ['tasks', 'ekstrak_tugas', 2]);
+  assert.equal(result.definition!.nodes.find(n => n.id === 'informasi')!.return_to_router, true);
+  const media = result.definition!.nodes.find(n => n.id === 'kirim_gambar')!;
+  assert.deepEqual(
+    [media.type, media.caption, media.media_as, media.send_when],
+    ['media', 'Brosur produk', 'image', 'after'],
+  );
 });

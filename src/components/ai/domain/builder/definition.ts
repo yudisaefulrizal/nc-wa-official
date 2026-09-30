@@ -175,6 +175,8 @@ export const limits = {
   filters: 20,
   rules: 20,
   extractFields: 30,
+  tasks: 5,
+  taskAttempts: 3,
   steps: 20,
   memory: 60,
   idLength: 32,
@@ -209,7 +211,14 @@ export interface GraphNode {
   // Dipakai filter node Data dan aturan node Kondisi.
   match?: 'all' | 'any';
   rules?: (ConditionRule | ConditionGroup)[];
-  // Node Ekstrak dan node Set / Hitung.
+  // Mode beberapa tugas pada Ekstrak/Router dan pengembalian dari Agent.
+  extract_mode?: 'fields' | 'tasks';
+  max_tasks?: number;
+  routing_mode?: 'single' | 'tasks';
+  tasks_source?: string;
+  max_attempts?: number;
+  return_to_router?: boolean;
+  // Node Ekstrak field dan node Set / Hitung.
   fields?: ExtractField[];
   steps?: ComputeStep[];
   // Node Data teks: jumlah karakter maksimal yang dikirim ke model.
@@ -253,6 +262,11 @@ const bad = (message: string) => new ApiError(400, 'invalid_graph', message);
 export function text(v: unknown, max = 8000): string {
   if (typeof v !== 'string' || v.length > max) throw bad('Teks wajib valid, maksimal ' + max + ' karakter.');
   return v;
+}
+function taskLimit(v: unknown, max: number) {
+  if (!Number.isSafeInteger(v) || Number(v) < 1 || Number(v) > max)
+    throw bad('Batas tugas/percobaan harus bilangan bulat 1–' + max + '.');
+  return Number(v);
 }
 function id(v: unknown) {
   const s = text(v, limits.idLength);
@@ -356,6 +370,12 @@ export function parseDefinition(value: unknown): GraphDefinition {
       model: text(n.model ?? '', 100),
       tools: list(n.tools ?? [], limits.tools).map(id),
       branches,
+      ...(n.extract_mode !== undefined ? { extract_mode: choice(n.extract_mode, ['fields', 'tasks'] as const) } : {}),
+      ...(n.max_tasks !== undefined ? { max_tasks: taskLimit(n.max_tasks, limits.tasks) } : {}),
+      ...(n.routing_mode !== undefined ? { routing_mode: choice(n.routing_mode, ['single', 'tasks'] as const) } : {}),
+      ...(n.tasks_source !== undefined ? { tasks_source: n.tasks_source === '' ? '' : id(n.tasks_source) } : {}),
+      ...(n.max_attempts !== undefined ? { max_attempts: taskLimit(n.max_attempts, limits.taskAttempts) } : {}),
+      ...(n.return_to_router !== undefined ? { return_to_router: n.return_to_router === true } : {}),
       ...(n.context_format !== undefined ? { context_format: choice(n.context_format, ['text', 'spo'] as const) } : {}),
       ...(n.fallback !== undefined ? { fallback: n.fallback === true } : {}),
       collection: text(n.collection ?? '', 32),
@@ -500,7 +520,8 @@ export function normalizeMemoryConnections(d: GraphDefinition): GraphDefinition 
 }
 export function ports(node: GraphNode): string[] {
   if (['output', 'fallback', 'memory', 'context_memory'].includes(node.type)) return [];
-  if (node.type === 'router') return node.branches.map(b => b.id);
+  if (node.type === 'router')
+    return [...node.branches.map(b => b.id), ...(node.routing_mode === 'tasks' ? ['done'] : [])];
   if (node.type === 'agent' && node.fallback) return ['next', 'fallback'];
   if (node.type === 'condition') return ['yes', 'no'];
   if (recordLookup(node)) return ['found', 'empty'];
@@ -549,7 +570,7 @@ export function validateGraph(d: GraphDefinition): GraphIssue[] {
       add('Hubungkan Context ke Memori konteks agar ringkasannya tersimpan.', n.id);
     // Instruksi Context ditanam di sistem, jadi hanya Agent yang wajib punya prompt.
     if (n.type === 'agent' && !n.prompt.trim()) add('Prompt wajib diisi.', n.id);
-    if (n.type === 'extract') {
+    if (n.type === 'extract' && n.extract_mode !== 'tasks') {
       const fields = n.fields ?? [];
       if (!fields.length) add('Tambahkan minimal satu field untuk Ekstrak.', n.id);
       if (new Set(fields.map(f => f.id)).size !== fields.length) add('ID field Ekstrak harus unik.', n.id);
@@ -573,6 +594,24 @@ export function validateGraph(d: GraphDefinition): GraphIssue[] {
       const steps = n.steps ?? [];
       if (!steps.length) add('Tambahkan minimal satu langkah.', n.id);
       if (new Set(steps.map(s => s.name)).size !== steps.length) add('Nama hasil setiap langkah harus unik.', n.id);
+    }
+    if ((n.extract_mode !== undefined || n.max_tasks !== undefined) && n.type !== 'extract')
+      add('Mode ekstraksi hanya untuk Ekstrak.', n.id);
+    if (
+      (n.routing_mode !== undefined || n.tasks_source !== undefined || n.max_attempts !== undefined) &&
+      n.type !== 'router'
+    )
+      add('Pengaturan routing tugas hanya untuk Router.', n.id);
+    if (n.return_to_router && n.type !== 'agent') add('Kembali ke Router hanya untuk Agent.', n.id);
+    if (n.type === 'router' && n.routing_mode === 'tasks') {
+      const source = nodes.get(n.tasks_source ?? '');
+      if (source?.type !== 'extract' || source.extract_mode !== 'tasks')
+        add('Pilih sumber Ekstrak dalam mode tugas.', n.id);
+      if (n.branches.some(b => b.id === 'done')) add('ID cabang done dipakai port Selesai.', n.id);
+      for (const b of n.branches) {
+        const target = nodes.get(d.edges.find(e => e.source === n.id && e.port === b.id)?.target ?? '');
+        if (target?.type !== 'agent') add('Cabang routing tugas harus langsung menuju Agent.', n.id);
+      }
     }
     if (n.tier === 'decision' && n.type !== 'router') add('Tier Keputusan hanya untuk Router.', n.id);
     if (n.type === 'router' && n.branches.length < 2) add('Router membutuhkan minimal dua cabang.', n.id);
@@ -665,6 +704,9 @@ export function validateGraph(d: GraphDefinition): GraphIssue[] {
     const earlier = (step: number) => new Set((n.steps ?? []).slice(0, step).map(s => s.name));
     const values: [string, number][] = [
       [n.prompt, -1],
+      ...(n.type === 'router' && n.routing_mode === 'tasks' && n.tasks_source
+        ? [['{{nodes.' + n.tasks_source + '.tasks}}', -1] as [string, number]]
+        : []),
       [n.query, -1],
       [n.value, -1],
       [n.caption ?? '', -1],
@@ -703,7 +745,7 @@ export function validateGraph(d: GraphDefinition): GraphIssue[] {
           )
             add('Variabel ' + match[1] + ' tidak dikenal.', n.id);
         }
-        if (path[0] === 'input' && path[1] && !['message', 'context', 'history'].includes(path[1]))
+        if (path[0] === 'input' && path[1] && !['message', 'context', 'history', 'task'].includes(path[1]))
           add('Field input tidak dikenal: ' + path[1] + '.', n.id);
         if (path[0] === 'nodes') {
           const source = nodes.get(path[1]);
@@ -732,7 +774,7 @@ export function outputFields(source: GraphNode): string[] {
     memory: ['history', 'context'],
     context_memory: ['context'],
     agent: ['answer', 'fallback', 'question'],
-    router: ['branch', 'fallback_terkait'],
+    router: ['branch', 'fallback_terkait', ...(source.routing_mode === 'tasks' ? ['results', 'tasks'] : [])],
     condition: ['matched'],
     context: ['context'],
     data_table: recordOutputs[source.operation],
@@ -740,7 +782,7 @@ export function outputFields(source: GraphNode): string[] {
     data_form: ['data', 'found'],
     output: [],
     fallback: [],
-    extract: [...(source.fields ?? []).map(f => f.id), 'missing'],
+    extract: source.extract_mode === 'tasks' ? ['tasks'] : [...(source.fields ?? []).map(f => f.id), 'missing'],
     compute: (source.steps ?? []).map(s => s.name),
     media: ['files', 'count', 'skipped'],
     receive: ['file', 'filename', 'type', 'mimetype', 'caption'],

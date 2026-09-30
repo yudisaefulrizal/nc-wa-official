@@ -2,10 +2,17 @@
 // res.locals.account), serta webhook dari Zernio yang publik.
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
+import { getOfficialMedia } from '../domain/official-messaging.js';
 import type { Instagram } from '../domain/instagram.js';
 
 // Didaftarkan sebelum parser JSON global: tanda tangan webhook dihitung dari body mentah.
 export function instagramPublicRoutes(app: express.Express, { instagram }: { instagram: Instagram }) {
+  app.get('/instagram/media/:token', rateLimit({ windowMs: 60000, limit: 120 }), async (req, res) => {
+    const media = await getOfficialMedia(req.params.token as string);
+    res.set('Cache-Control', 'private, no-store');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.type(media.mimetype).sendFile(media.path);
+  });
   app.post(
     '/zernio/webhook/:id',
     rateLimit({ windowMs: 60000, limit: 600 }),
@@ -17,7 +24,7 @@ export function instagramPublicRoutes(app: express.Express, { instagram }: { ins
     },
   );
   // Webhook Instagram resmi: GET untuk verifikasi callback di Meta, POST untuk event (body mentah untuk tanda tangan).
-  app.get('/webhook/instagram', rateLimit({ windowMs: 60000, limit: 60 }), (req, res) => {
+  app.get('/webhook/instagram', rateLimit({ windowMs: 60000, limit: 120 }), (req, res) => {
     res.type('text/plain').send(instagram.verifyOfficialWebhook(req.query));
   });
   app.post(
@@ -33,7 +40,7 @@ export function instagramPublicRoutes(app: express.Express, { instagram }: { ins
     },
   );
   // Instagram Login resmi. Callback berasal dari redirect browser Meta, jadi pemilik akun dibaca dari state.
-  app.get('/auth/instagram/callback', rateLimit({ windowMs: 60000, limit: 60 }), async (req, res) => {
+  app.get('/auth/instagram/callback', rateLimit({ windowMs: 60000, limit: 120 }), async (req, res) => {
     let result = 'error';
     try {
       result = await instagram.finishOfficialLogin(req.query);
@@ -42,7 +49,7 @@ export function instagramPublicRoutes(app: express.Express, { instagram }: { ins
     }
     res.redirect(302, '/dashboard/integrasi?instagram=' + result);
   });
-  const meta = [rateLimit({ windowMs: 60000, limit: 60 }), express.urlencoded({ extended: false, limit: '16kb' })];
+  const meta = [rateLimit({ windowMs: 60000, limit: 120 }), express.urlencoded({ extended: false, limit: '16kb' })];
   app.post('/instagram/deauthorize', ...meta, async (req, res) => {
     res.sendStatus((await instagram.deauthorizeOfficial(req.body?.signed_request)) ? 200 : 403);
   });

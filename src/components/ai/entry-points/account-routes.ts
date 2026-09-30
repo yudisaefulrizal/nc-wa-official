@@ -38,7 +38,7 @@ export function aiAdminRoutes(app: express.Express) {
   );
   app.put('/api/admin/ai/providers/routes', async (req, res) => res.json(await ai.setProviderRoutes(req.body)));
   app.post('/api/admin/ai/providers/test', async (req, res) => res.json(await ai.testProviderProfile(req.body)));
-  app.post('/api/admin/ai/test', rateLimit({ windowMs: 60000, limit: 5 }), async (req, res) =>
+  app.post('/api/admin/ai/test', rateLimit({ windowMs: 60000, limit: 120 }), async (req, res) =>
     res.json(await ai.test(req.body?.tier)),
   );
   app.post('/api/admin/accounts/:id/ai-credits', async (req, res) =>

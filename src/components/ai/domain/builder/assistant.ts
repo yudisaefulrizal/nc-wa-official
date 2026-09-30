@@ -11,7 +11,7 @@ import { transientAIError } from '../pipeline/retry.js';
 import { ai } from '../service.js';
 import * as auditSql from '../../data-access/audit-events-queries.js';
 import { parseDefinition, text, validateGraph, type GraphDefinition, type GraphIssue } from './definition.js';
-import { profileSkillFiles } from './skill.js';
+import { profileSkillFiles, tasksGuideFile, tasksExampleFile } from './skill.js';
 
 export const maxAssistantRepairs = 2;
 export type AssistantEvent =
@@ -43,6 +43,11 @@ Balas HANYA satu objek JSON, tanpa teks lain:
 - Bila mengubah, kirim definisi lengkap (semua koleksi, node, dan edge), bukan potongan.
 - Pertahankan id dan nama node yang tidak diubah. Jangan menulis posisi x/y; editor yang menyusun tampilan.
 - Jangan mengubah hal yang tidak diminta.
+- Draft sudah tersedia dalam pesan ini: jangan meminta ekspor/impor JSON. Aturan paket skill tentang impor berlaku untuk pemakaian di luar Editor; di sini selalu gunakan objek reply/definition di atas.
+- Kemampuan node/tool mengikuti reference/format.md dan ${tasksGuideFile} yang disertakan. Instruksi ini menggantikan asumsi dari riwayat yang lebih lama; jangan menyatakan routing tugas atau penyesuaian gambar lintas kanal belum tersedia.
+- Untuk beberapa tugas, gunakan mode pada Ekstrak/Router serta Agent biasa untuk pekerja/penggabung; ikuti ${tasksExampleFile}. Jangan membuat jenis node baru, edge siklus, atau port pengembalian. Pertahankan mode lama bila pemilik tidak memintanya diubah.
+- Pengiriman media otomatis mengikuti sesi tujuan. Jangan meminta pemilik membuat cabang WhatsApp/Instagram untuk mengirim gambar yang sama; jelaskan caption terpisah dan batas konektor resmi bila relevan.
+- Perubahan panduan bukan bukti model/pengiriman nyata sudah diuji. Jangan mengklaim pengujian yang tidak dilakukan.
 - "reply" menjelaskan apa yang diubah dan alasannya, maksimal beberapa kalimat.`;
 // Panduan skill + format balasan; sama untuk setiap permintaan.
 function systemPrompt() {

@@ -39,7 +39,7 @@ Struktur mengikuti Node.js Best Practices: kode dikelompokkan per komponen bisni
 | `test/` | Tes, dengan jalur yang sama seperti `src/` (`test/components/ai/profiles.test.ts` menguji `src/components/ai`); `test/components/ai/graph-fixture.ts` berisi graf uji bersama untuk tes runtime. |
 | `scripts/test/`, `scripts/checks/`, `scripts/tools/` | Runner tes terisolasi, pemeriksaan browser, dan utilitas (`owner`, `backup`, `restore-check`, `setup-*`, `bench`). |
 
-Komponen: `account` (akun, login, API key), `billing` (paket, kredit pesan, pembayaran, kirim berbayar), `whatsapp` (sesi Baileys, pesan, media, event, webhook), `instagram` (Instagram DM lewat Zernio: akun Zernio klien, konektor sesi, webhook, alur hubungkan; plus Instagram Login resmi langsung ke Meta di `domain/official-login.ts`, tabel `instagram_official`, env `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET`, redirect `APP_ORIGIN/auth/instagram/callback`; baru autentikasi dan token, belum mengirim/menerima DM), `ai` (Asisten AI, profil graf dan Editor profil), `auto-share`, dan `referral`.
+Komponen: `account` (akun, login, API key), `billing` (paket, kredit pesan, pembayaran, kirim berbayar), `whatsapp` (sesi Baileys, pesan, media, event, webhook), `instagram` (Instagram DM lewat Zernio: akun Zernio klien, konektor sesi, webhook, alur hubungkan; plus Instagram Login resmi langsung ke Meta di `domain/official-login.ts`, tabel `instagram_official`, env `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET`, redirect `APP_ORIGIN/auth/instagram/callback`; autentikasi, token, webhook DM, kirim teks dan gambar JPG/PNG), `ai` (Asisten AI, profil graf dan Editor profil), `auto-share`, dan `referral`.
 
 **Aturan ketergantungan**
 - Arah panggilan: `entry-points` → `domain` → `data-access` → `libraries`. Jangan dibalik.
@@ -115,6 +115,7 @@ Komentar pembuka, import, tipe, fungsi yang diekspor, lalu helper internal.
   - Profil baru selalu mulai nonaktif sampai pemilik menyalakannya.
   - Tabel profil statis lama (`ai_products`, `ai_orders`, `ai_product_images`, `ai_data_sources`, `ai_edu_*`, `ai_workflow`) dikosongkan oleh migrasi karena user database aplikasi tidak punya hak DROP; migrasi mencetak perintah `DROP TABLE` untuk dijalankan sekali dengan akun admin MySQL.
 - **Menambah profil** dilakukan melalui Editor profil, impor/tempel JSON, atau skill AI, tanpa kode per profil. Menambah jenis node/operasi baru harus memperbarui kontrak, validator, runtime, UI, deskripsi skill AI (`domain/builder/skill.ts`, dipaksa `tsc`), dan tes.
+- Panduan Asisten AI Builder dan ZIP skill berasal dari `profileSkillFiles()` di `domain/builder/skill.ts`. Saat menambah node, mode, port, tool, atau kemampuan kanal, perbarui referensi dan contoh di sana; jangan membuat instruksi terpisah yang bisa tertinggal. Panduan tugas ada di `reference/task-routing.md` dan contoh `examples/cs-multi-tugas.json` di paket hasil generator.
 - **Auto Share**: konten dan tujuan disalin ke run saat dijadwalkan. Worker memproses satu run sekaligus, dengan jeda acak 1–3 detik antar tujuan.
 
 ## Pelajaran dari kegagalan sebelumnya
@@ -126,3 +127,10 @@ Komentar pembuka, import, tipe, fungsi yang diekspor, lalu helper internal.
 - Memeriksa pratinjau atau payload saja tidak cukup. Uji alur simpan lalu buka ulang secara utuh.
 - Dialog `showModal()` berada di atas semua z-index. Notifikasi `#message` memakai popover supaya tetap terlihat di atas dialog.
 - Batas JSON 16 KB, kecuali API Editor profil (128 KB, lihat `src/http/app.ts`).
+
+## Media Instagram resmi
+
+- Koneksi Instagram Login mengirim gambar JPG/PNG melalui Send API yang sama dengan teks. Jalur manual/API dan node Kirim media AI memakai konektor yang sama.
+- Salinan gambar maksimal 8 MB disimpan sementara di `storage/files/instagram-outbound`, maksimum 32 file aktif. Meta mengambil gambar melalui `APP_ORIGIN/instagram/media/<token-acak>` tanpa cookie; URL berlaku 15 menit, tidak dicache, dan file kedaluwarsa dibersihkan setiap menit. `APP_ORIGIN` harus dapat dijangkau Meta.
+- Node Kirim media AI membaca kemampuan `Connection.mediaCaption`: Instagram resmi mengirim caption sebagai teks terpisah setelah gambar berhasil, lewat billing dan pencatatan chat masing-masing. WhatsApp/Zernio tetap inline. Jalur manual/API masih menolak caption inline. WebP statis dikonversi menjadi JPEG sebelum dipublikasikan tanpa mengubah file sumber (sumber/hasil maksimal 8 MB); WebP animasi, video/audio/dokumen belum didukung konektor resmi.
+- Pengujian gambar menggunakan Meta tiruan; pengiriman gambar ke Instagram sungguhan belum diuji.

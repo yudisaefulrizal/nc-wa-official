@@ -47,6 +47,8 @@ class FixtureAI extends AIService {
 }
 const service = new FixtureAI(transport, async () => {});
 const updates = new Map<string, (event: Update) => void>();
+const captionModes = new Map<string, 'inline' | 'separate'>();
+const mediaFailures = new Map<string, 'image' | 'caption'>();
 // Isi setiap kiriman engine tiruan, berurutan, untuk memeriksa urutan media dan teks.
 const outbox: { to: string; content: any }[] = [];
 let sequence = 0;
@@ -55,11 +57,22 @@ const gateway = createGateway(
     updates.set(account + '/' + session, update);
     update({ status: 'connected' });
     return {
+      get mediaCaption() {
+        return captionModes.get(account) ?? 'inline';
+      },
       close() {},
       async logout() {},
       async typing() {},
       async read() {},
       async send(to: string, content: unknown) {
+        const outgoing = content as { type?: string; text?: string; caption?: string };
+        if (captionModes.get(account) === 'separate' && outgoing.type && outgoing.caption)
+          throw new ApiError(400, 'unsupported_caption', 'Caption inline tidak didukung');
+        if (
+          (mediaFailures.get(account) === 'image' && outgoing.type) ||
+          (mediaFailures.get(account) === 'caption' && outgoing.text === 'Keterangan foto')
+        )
+          throw new ApiError(400, 'unsupported_media', 'Penolakan media uji');
         outbox.push({ to, content });
         const id = 'OUT' + ++sequence;
         await service.registerSystemMessage(account, session, id);
@@ -636,3 +649,65 @@ test('Terima media stores a customer image into a record; profiles without the n
   assert.ok(history.some((m: any) => m.role === 'user' && m.content === '[Gambar] transfer BCA'));
   await rm(join(storagePaths().recordFiles, t.id), { recursive: true, force: true });
 });
+
+for (const scenario of ['before', 'after', 'image_failed', 'caption_failed'] as const)
+  test('Kirim media adapts to separate captions: ' + scenario, async () => {
+    const t = await tenant();
+    captionModes.set(t.id, 'separate');
+    const d = blankDefinition('Media kanal ' + scenario);
+    d.nodes[1] = {
+      ...d.nodes[1],
+      type: 'media',
+      value: '{{input.message}}',
+      caption: 'Keterangan foto',
+      send_when: scenario === 'after' ? 'after' : 'before',
+    };
+    d.nodes[2].value = 'Ini gambarnya';
+    const g = await createGraph(owner, d);
+    graphs.push(g.id);
+    await saveGraph(owner, g.id, { revision: g.revision }, true);
+    await setProfileEnabled(owner, g.id, true);
+    const profile = await service.createDataProfile(t.id, { profile_type: g.id, name: 'Media kanal' });
+    await t.api('put', '/sessions/shop/ai/profile').send({ data_profile_id: profile.id, enabled: true }).expect(200);
+    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#0a0' } })
+      .png()
+      .toBuffer();
+    const file = await uploadRecordFile(t.id, profile.id, 'foto.png', png);
+    if (scenario === 'image_failed') mediaFailures.set(t.id, 'image');
+    if (scenario === 'caption_failed') mediaFailures.set(t.id, 'caption');
+    const start = outbox.length,
+      wallet = (await basicWallet(t.id)).balance;
+    t.send('shop', 'CHANNEL_MEDIA', file.id);
+    const expected =
+      scenario === 'image_failed'
+        ? ['Ini gambarnya']
+        : scenario === 'caption_failed'
+          ? ['image', 'Ini gambarnya']
+          : scenario === 'after'
+            ? ['Ini gambarnya', 'image', 'Keterangan foto']
+            : ['image', 'Keterangan foto', 'Ini gambarnya'];
+    assert.equal(
+      await eventually(
+        () => answers(t.id, 'shop'),
+        n => n === expected.length,
+      ),
+      expected.length,
+    );
+    const sent = outbox.slice(start).filter(o => o.to.startsWith(customer));
+    assert.deepEqual(
+      sent.map(o => o.content.type ?? o.content.text),
+      expected,
+    );
+    for (const message of sent.filter(o => o.content.type)) assert.equal(message.content.caption, undefined);
+    assert.equal((await basicWallet(t.id)).balance, wallet - expected.length);
+    const history = (await chatMessages(t.id, 'shop', customer)).messages.filter(m => m.origin === 'ai');
+    assert.equal(
+      history.filter(m => m.type === 'text' && m.text === 'Keterangan foto').length,
+      scenario.endsWith('failed') ? 0 : 1,
+    );
+    // Pesan masuk yang sama tidak mengirim ulang gambar ataupun caption.
+    t.send('shop', 'CHANNEL_MEDIA', file.id);
+    await service.stop();
+    assert.equal(outbox.slice(start).filter(o => o.to.startsWith(customer)).length, expected.length);
+    await rm(join(storagePaths().recordFiles, t.id), { recursive: true, force: true });
+  });

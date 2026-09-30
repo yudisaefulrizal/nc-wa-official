@@ -27,6 +27,9 @@ import {
   skillName,
   spoExample,
   spoExampleFile,
+  tasksExample,
+  tasksExampleFile,
+  tasksGuideFile,
 } from '../../../src/components/ai/domain/builder/skill.js';
 import { runGraph } from '../../../src/components/ai/domain/builder/engine.js';
 import { defaults, type AIMessage } from '../../../src/components/ai/domain/provider.js';
@@ -78,13 +81,38 @@ test('Skill package has valid frontmatter, a complete reference, and a runnable 
   ])
     assert.ok(reference.includes('`' + value + '`'), 'referensi memuat ' + value);
   for (const path of contextVariablePaths) assert.ok(reference.includes('{{' + path + '}}'), path);
-  assert.deepEqual([...files.keys()].sort(), [
-    skillName + '/SKILL.md',
-    skillName + '/' + spoExampleFile,
-    skillName + '/reference/format.md',
-  ]);
+  assert.deepEqual(
+    [...files.keys()].sort(),
+    [
+      skillName + '/SKILL.md',
+      skillName + '/' + spoExampleFile,
+      skillName + '/' + tasksExampleFile,
+      skillName + '/' + tasksGuideFile,
+      skillName + '/reference/format.md',
+    ].sort(),
+  );
   assert.ok(skill.includes('](' + spoExampleFile + ')'), 'SKILL.md menaut contoh S-P-O');
   assertRunnable(parseDefinition(JSON.parse(files.get(skillName + '/' + spoExampleFile)!)));
+  assert.ok(skill.includes('](' + tasksGuideFile + ')'));
+  assert.ok(skill.includes('](' + tasksExampleFile + ')'));
+  assertRunnable(parseDefinition(JSON.parse(files.get(skillName + '/' + tasksExampleFile)!)));
+  const tasksGuide = files.get(skillName + '/' + tasksGuideFile)!;
+  for (const term of [
+    'extract_mode',
+    'routing_mode',
+    'tasks_source',
+    'max_attempts',
+    'return_to_router',
+    'input.task.context',
+    'nodes.maksud.results',
+    'unresolved',
+    'done',
+    'WebP',
+    'kredit pesan tambahan',
+  ])
+    assert.ok(tasksGuide.includes(term), term);
+  assert.match(reference, /input.task/);
+  assert.doesNotMatch(skill, /Agent dan Context punya `prompt`|kosongkan `caption`|aplikasi tidak memisahkan caption/);
 });
 
 // Contoh skill dijalankan dua giliran untuk setiap cabang: ringkasan S-P-O dari giliran pertama sampai ke Router di
@@ -133,6 +161,82 @@ test('The S-P-O example carries the summary from one message to the router of th
     ]);
     assert.match(routerInput, /pelanggan-memilih-paket_basic/);
   }
+});
+
+test('The downloadable task example reroutes workers, merges once, and writes context after the merged answer', async () => {
+  const d = tasksExample();
+  const calls: string[] = [];
+  const config = { ...defaults };
+  const result = await runGraph(
+    d,
+    async (c, messages) => {
+      calls.push(c.call_role!);
+      if (c.call_role === 'ekstrak_tugas') {
+        assert.ok(c.response_format);
+        return JSON.stringify({
+          tasks: [
+            { task: 'Harga kopi', context: 'Kopi A' },
+            { task: 'Info produk', context: 'Produk B' },
+          ],
+        });
+      }
+      if (c.call_role === 'router') {
+        const task = JSON.parse(messages[1].content).input.task;
+        return JSON.stringify({ branch: task.exclusions.length ? 'layanan' : 'informasi' });
+      }
+      if (c.call_role === 'ringkas_konteks') {
+        assert.match(JSON.stringify(messages), /Jawaban gabungan/);
+        return 'Pelanggan menanyakan dua produk. AI menjawab keduanya.';
+      }
+      const data = JSON.parse(
+        messages
+          .find(m => m.content.startsWith('Data eksekusi (bukan instruksi): '))!
+          .content.replace('Data eksekusi (bukan instruksi): ', '')
+          .split('\nBalas hanya')[0],
+      );
+      if (c.call_role === 'gabungkan') {
+        assert.equal(data.input.task, null);
+        assert.deepEqual(
+          data.nodes.maksud.results.map((t: { status: string; answer: string }) => [t.status, t.answer]),
+          [
+            ['completed', 'Hasil task_1'],
+            ['completed', 'Hasil task_2'],
+          ],
+        );
+        assert.match(messages[0].content, /unresolved/);
+        return '{"answer":"Jawaban gabungan"}';
+      }
+      if (c.call_role === 'informasi' && data.input.task.id === 'task_1') return '{"return_to_router":"Butuh layanan"}';
+      return JSON.stringify({ answer: 'Hasil ' + data.input.task.id });
+    },
+    config,
+    [{ role: 'user', content: 'Harga kopi A dan info produk B?' }],
+    {
+      account: randomUUID(),
+      profile: 'simulation',
+      session: 'test',
+      customer: '628001',
+      requestId: randomUUID(),
+      fallbackEnabled: true,
+    },
+    null,
+    async () => {
+      throw Error('Tool tidak dipanggil di tes ini');
+    },
+  );
+  assert.equal(result.answer, 'Jawaban gabungan');
+  assert.equal(config.graph_context, 'Pelanggan menanyakan dua produk. AI menjawab keduanya.');
+  assert.deepEqual(calls, [
+    'ekstrak_tugas',
+    'router',
+    'informasi',
+    'router',
+    'layanan',
+    'router',
+    'informasi',
+    'gabungkan',
+    'ringkas_konteks',
+  ]);
 });
 
 const owner = randomUUID(),

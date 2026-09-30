@@ -249,6 +249,56 @@ function renderInspector() {
     host.append(box, users);
   }
   if (n.type === 'router') {
+    const routing = section('Routing tugas');
+    routing.append(
+      field(
+        'Mode routing',
+        n.routing_mode ?? 'single',
+        v => {
+          mutate(() => {
+            n.routing_mode = v;
+            if (v === 'tasks')
+              n.tasks_source ??=
+                state.document.nodes.find(x => x.type === 'extract' && x.extract_mode === 'tasks')?.id ?? '';
+            else state.document.edges = state.document.edges.filter(e => !(e.source === n.id && e.port === 'done'));
+          });
+          renderInspector();
+        },
+        'select',
+        [
+          { value: 'single', label: 'Satu cabang' },
+          { value: 'tasks', label: 'Setiap tugas ke Agent' },
+        ],
+      ),
+    );
+    if (n.routing_mode === 'tasks')
+      routing.append(
+        field('Sumber tugas', n.tasks_source ?? '', v => mutate(() => (n.tasks_source = v)), 'select', [
+          { value: '', label: 'Pilih Ekstrak tugas…' },
+          ...state.document.nodes
+            .filter(x => x.type === 'extract' && x.extract_mode === 'tasks')
+            .map(x => ({ value: x.id, label: x.label })),
+        ]),
+        field(
+          'Maksimal percobaan per tugas (1–3)',
+          n.max_attempts ?? 3,
+          v => mutate(() => (n.max_attempts = v)),
+          'number',
+        ),
+        el(
+          'p',
+          'Hubungkan setiap cabang langsung ke Agent. Hasil Agent otomatis dikumpulkan; port Selesai berjalan setelah seluruh tugas selesai atau batas tercapai. Hubungkan Selesai ke Agent penggabung.',
+          'hint',
+        ),
+        el(
+          'p',
+          'Pengecualian Agent dan alasan pengembalian disimpan per tugas. Hasil lengkap: {{nodes.' +
+            n.id +
+            '.results}}.',
+          'hint',
+        ),
+      );
+    host.append(routing);
     const box = section('Cabang keputusan');
     for (const b of n.branches) {
       const item = el('div', undefined, 'branch');
@@ -347,7 +397,50 @@ function renderInspector() {
     };
     row.append(text, toggle);
     fallback.append(row);
-    host.append(box, fallback);
+    const returning = section('Kembali ke Router');
+    returning.append(
+      field(
+        'Izinkan mengembalikan tugas',
+        n.return_to_router ?? false,
+        v => mutate(() => (n.return_to_router = v)),
+        'checkbox',
+      ),
+      el(
+        'p',
+        'Dalam routing beberapa tugas, Agent dapat mengembalikan tugas di luar kemampuannya dengan alasan. Router memilih Agent lain sampai batas percobaan.',
+        'hint',
+      ),
+    );
+    host.append(box, fallback, returning);
+    const routers = state.document.nodes.filter(x => x.type === 'router' && x.routing_mode === 'tasks');
+    if (routers.length) {
+      const merge = section('Penggabung jawaban');
+      merge.append(
+        el(
+          'p',
+          'Gunakan Agent ini setelah port Selesai Router. Instruksi dapat disesuaikan setelah diterapkan.',
+          'hint',
+        ),
+      );
+      for (const router of routers)
+        merge.append(
+          btn(
+            'Gabungkan hasil ' + router.label,
+            () => {
+              mutate(
+                () =>
+                  (n.prompt =
+                    'Gabungkan hasil tugas berikut menjadi satu jawaban yang runtut untuk pelanggan: {{nodes.' +
+                    router.id +
+                    '.results}}. Gunakan jawaban tugas completed, hindari pengulangan, dan jelaskan tugas unresolved beserta informasi yang masih diperlukan. Jangan mengarang hasil atau mengklaim tugas yang belum selesai sudah berhasil.'),
+              );
+              renderInspector();
+            },
+            'btn small',
+          ),
+        );
+      host.append(merge);
+    }
   }
   if (n.type === 'condition') renderRules(host.appendChild(section('Syarat')), n);
   if (n.type === 'data_table') renderRecordTool(host.appendChild(section()), n);
@@ -421,7 +514,10 @@ function connectionsSection(n) {
 // Variabel yang bisa dipakai node: pesan, konteks runtime, dan keluaran node lain.
 function availableVariables(n) {
   const groups = [
-    ['Pesan', ['input.message', 'input.context', 'input.history']],
+    [
+      'Pesan',
+      ['input.message', 'input.context', 'input.history', 'input.task', 'input.task.task', 'input.task.context'],
+    ],
     ...Object.entries(contextVariables).map(([root, keys]) => [
       { system: 'Sistem', customer: 'Pelanggan', service: 'Layanan' }[root],
       keys.map(key => root + '.' + key),
@@ -465,7 +561,9 @@ function availableVariables(n) {
           : isDataNode(x)
             ? dataOutputs(x)
             : x.type === 'extract'
-              ? [...(x.fields ?? []).map(f => f.id), 'missing']
+              ? x.extract_mode === 'tasks'
+                ? ['tasks']
+                : [...(x.fields ?? []).map(f => f.id), 'missing']
               : x.type === 'compute'
                 ? (x.steps ?? []).map(step => step.name)
                 : x.type === 'media'
@@ -474,7 +572,9 @@ function availableVariables(n) {
                     ? ['file', 'filename', 'type', 'mimetype', 'caption']
                     : x.type === 'file_json' || x.type === 'file_md'
                       ? ['file', 'filename', 'size']
-                      : [{ agent: 'answer', context: 'context', router: 'branch' }[x.type]];
+                      : x.type === 'router' && x.routing_mode === 'tasks'
+                        ? ['branch', 'tasks', 'results']
+                        : [{ agent: 'answer', context: 'context', router: 'branch' }[x.type]];
     groups.push([x.label, keys.map(key => 'nodes.' + x.id + '.' + key)]);
   }
   return groups;
@@ -1089,6 +1189,32 @@ function renderRules(host, n) {
 
 const extractTypes = ['text', 'number', 'boolean', 'date', 'time', 'datetime', 'choice', 'multichoice', 'phone'];
 function renderExtract(host, n) {
+  host.append(
+    field(
+      'Mode ekstraksi',
+      n.extract_mode ?? 'fields',
+      v => {
+        mutate(() => (n.extract_mode = v));
+        renderInspector();
+      },
+      'select',
+      [
+        { value: 'fields', label: 'Field terstruktur' },
+        { value: 'tasks', label: 'Tugas dan konteks' },
+      ],
+    ),
+  );
+  if (n.extract_mode === 'tasks') {
+    host.append(
+      field('Maksimal tugas (1–5)', n.max_tasks ?? 5, v => mutate(() => (n.max_tasks = v)), 'number'),
+      el(
+        'p',
+        'Menghasilkan tasks berisi id, task, dan context. Hubungkan ke Router dengan mode Setiap tugas ke Agent. Permintaan terkait digabung bila mencapai batas.',
+        'hint',
+      ),
+    );
+    return;
+  }
   n.fields ??= [];
   host.append(
     el('h3', 'Field yang diambil'),
@@ -1272,7 +1398,12 @@ function renderMedia(host, n) {
     ]),
     el(
       'p',
-      'Dikirim setelah alur selesai dan tidak dikirim bila percakapan diteruskan ke tim. Maksimal 3 file per balasan, 1 kredit pesan per file. Simulasi dan Uji Coba hanya menampilkan daftarnya.',
+      'Dikirim setelah alur selesai, kecuali saat diteruskan ke tim. Maksimal 3 file per balasan, 1 kredit pesan per file. Simulasi dan Uji Coba hanya menampilkan daftarnya.',
+      'hint',
+    ),
+    el(
+      'p',
+      'Kanal mengikuti sesi tujuan. WhatsApp: gambar beserta caption. Instagram resmi: gambar lalu caption terpisah (1 kredit pesan tambahan); WebP statis otomatis menjadi JPEG. Batas gambar Instagram 8 MB; dokumen belum didukung konektor resmi.',
       'hint',
     ),
   );

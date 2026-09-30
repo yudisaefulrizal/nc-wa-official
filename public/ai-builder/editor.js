@@ -319,7 +319,7 @@ function renderStatus() {
 // Harus sama dengan ports() di server (definition.ts).
 function nodePorts(n) {
   if (['output', 'fallback', 'memory'].includes(n.type)) return [];
-  if (n.type === 'router') return n.branches.map(b => b.id);
+  if (n.type === 'router') return [...n.branches.map(b => b.id), ...(n.routing_mode === 'tasks' ? ['done'] : [])];
   if (n.type === 'agent' && n.fallback) return ['next', 'fallback'];
   if (n.type === 'condition') return ['yes', 'no'];
   if (n.type === 'data_table' && ['search', 'get'].includes(n.operation)) return ['found', 'empty'];
@@ -333,6 +333,7 @@ const portLabels = {
   found: 'Ditemukan',
   empty: 'Kosong',
   fallback: 'Fallback',
+  done: 'Selesai',
   received: 'Diterima',
   none: 'Tidak ada',
 };
@@ -378,6 +379,7 @@ function renameNode(n, label) {
   }
   for (const x of state.document.nodes) {
     x.tools = x.tools.map(t => (t === old ? next : t));
+    if (x.tasks_source === old) x.tasks_source = next;
     if (x.memory === old) x.memory = next;
     if (x.context_memory === old) x.context_memory = next;
   }
