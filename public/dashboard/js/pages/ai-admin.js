@@ -130,7 +130,7 @@ const aiTiers = [
       for (const [tier] of aiTiers) payload[tier] = { profileId: ui.routes.elements[tier + 'Profile'].value };
       await api('/api/admin/ai/providers/routes', 'PUT', payload);
       $('message').textContent = 'Provider per tingkat tersimpan.';
-      await loadProviderProfiles();
+      await loadAIConfig();
     });
   };
 }

@@ -153,6 +153,18 @@ export async function setProviderRoutes(svc: AIService, body: unknown) {
     if (!profiles[0] || !profiles[0].model) throw fail('Profil ' + tier + ' tidak aktif atau model belum diisi');
     await providerRoutesSql.upsert(db, [tier, route.profileId, profiles[0].model]);
   }
+  // Tanpa baris pengaturan, UPDATE di bawah tidak mengubah apa pun dan rute profil tidak pernah berlaku: AI memakai nilai
+  // bawaan kode (model lama dan API key kosong) walau pengujian profil berhasil.
+  await settingsSql.ensureRow(db, [
+    defaults.endpoint,
+    defaults.model,
+    defaults.input_rate,
+    defaults.output_rate,
+    defaults.memory_limit,
+    defaults.context_memory_limit,
+    defaults.trace_enabled,
+    defaults.credit_price,
+  ]);
   await settingsSql.enableProfileRouting(db);
   return svc.providerProfiles();
 }
@@ -217,7 +229,8 @@ export async function configure(svc: AIService, actor: string, body: unknown) {
     if (!key || /[\r\n]/.test(key)) throw fail('API key tidak valid');
     config.secret = encrypt(key);
   }
-  if (!config.secret) throw fail('API key wajib diisi');
+  // Dengan rute profil aktif, API key ada di profil provider; pengaturan lama (tarif, memori) tetap bisa disimpan tanpanya.
+  if (!config.secret && !Object.keys(previous.tier_profiles ?? {}).length) throw fail('API key wajib diisi');
   await transaction(async c => {
     await settingsSql.upsert(c, [
       config.endpoint,
