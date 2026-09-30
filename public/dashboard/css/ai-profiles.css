@@ -718,3 +718,11 @@ p.ai-warning {
   border-color: #b42318;
   color: #fff;
 }
+
+.ai-route-warning {
+  color: #a8231a;
+  font-weight: 600;
+}
+select.ai-route-dead {
+  border-color: #d9534f;
+}

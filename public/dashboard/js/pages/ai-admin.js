@@ -153,13 +153,27 @@ async function loadProviderProfiles() {
   for (const [tier] of aiTiers) {
     const select = ui.routes.elements[tier + 'Profile'],
       route = providerProfiles.routes.find(r => r.tier === tier);
-    select.replaceChildren(
-      ...providerProfiles.profiles
-        .filter(p => p.active)
-        .map(
-          p => new Option(p.name + ' · ' + p.provider, p.id, p.id === route?.profile_id, p.id === route?.profile_id),
-        ),
-    );
+    const options = providerProfiles.profiles
+      .filter(p => p.active)
+      .map(p => new Option(p.name + ' · ' + p.provider, p.id, p.id === route?.profile_id, p.id === route?.profile_id));
+    // Rute yang menunjuk ke profil nonaktif tidak boleh tampak memilih profil pertama: pilihannya kosong dan diberi
+    // peringatan, sampai pemilik memilih profil aktif dan menyimpan.
+    const dead = providerProfiles.inactive_tiers?.includes(tier);
+    select.replaceChildren(...(dead ? [new Option('— pilih profil aktif —', '', true, true)] : []), ...options);
+    select.classList.toggle('ai-route-dead', Boolean(dead));
+  }
+  ui.routes.querySelector('.ai-route-warning')?.remove();
+  const deadTiers = aiTiers
+    .filter(([tier]) => providerProfiles.inactive_tiers?.includes(tier))
+    .map(([, label]) => label);
+  if (deadTiers.length) {
+    const warning = document.createElement('p');
+    warning.className = 'ai-route-warning ai-helper';
+    warning.textContent =
+      'Tingkat ' +
+      deadTiers.join(', ') +
+      ' memakai profil yang nonaktif atau sudah dihapus, jadi AI memakai profil aktif lain. Pilih profil di bawah lalu Simpan rute provider.';
+    ui.routes.querySelector('p').after(warning);
   }
   ui.list.replaceChildren(
     ...providerProfiles.profiles.map(profile => {

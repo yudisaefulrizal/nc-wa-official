@@ -48,8 +48,10 @@ export async function loadConfig(svc: AIService): Promise<AIConfig> {
           },
         ]),
       );
-      if (!profiles.structured && profiles.cheap) profiles.structured = profiles.cheap;
-      if (!profiles.decision && profiles.cheap) profiles.decision = profiles.cheap;
+      // Tingkat tanpa profil aktif (rute hilang atau profilnya dinonaktifkan) memakai profil aktif lain, bukan kembali ke
+      // pengaturan lama yang bisa berisi provider dan model yang sudah lama tidak dipakai.
+      const live = profiles.cheap ?? profiles.medium ?? profiles.smart ?? Object.values(profiles)[0];
+      if (live) for (const tier of modelTiers) profiles[tier] ??= live;
       config.tier_profiles = profiles;
     } catch (error) {
       console.error(
@@ -71,9 +73,12 @@ export async function providerProfiles(svc: AIService) {
     const [all] = await providerProfilesSql.listAll(db);
     const rows = all.map(({ secret, ...profile }) => profile);
     const [routes] = await providerRoutesSql.listAll(db);
-    return { profiles: rows, routes };
+    const live = new Set(rows.filter(profile => profile.active).map(profile => profile.id));
+    // Tingkat yang rutenya menunjuk ke profil nonaktif atau sudah tidak ada; dashboard menampilkannya sebagai peringatan.
+    const inactive_tiers = routes.filter(route => !live.has(route.profile_id)).map(route => route.tier);
+    return { profiles: rows, routes, inactive_tiers };
   } catch {
-    return { profiles: [], routes: [] };
+    return { profiles: [], routes: [], inactive_tiers: [] };
   }
 }
 export async function saveProviderProfile(svc: AIService, body: unknown) {
@@ -86,6 +91,17 @@ export async function saveProviderProfile(svc: AIService, body: unknown) {
   if (kind === 'openrouter' && host !== 'openrouter.ai') throw fail('Endpoint OpenRouter harus memakai openrouter.ai');
   if (kind === 'sumopod' && host !== 'ai.sumopod.com') throw fail('Endpoint Sumopod harus memakai ai.sumopod.com');
   const active = input.active !== false;
+  if (id && !active) {
+    const [routes] = await providerRoutesSql.listTiersOfProfile(db, [id]);
+    if (routes.length)
+      throw new ApiError(
+        409,
+        'profile_in_use',
+        'Profil masih dipakai oleh tingkat ' +
+          routes.map(r => r.tier).join(', ') +
+          '. Pilih profil lain di tab Model dan simpan dulu sebelum menonaktifkannya.',
+      );
+  }
   const [old] = id ? await providerProfilesSql.findSecret(db, [id]) : [[] as RowDataPacket[]];
   if (id && !old[0]) throw new ApiError(404, 'not_found', 'Profil provider tidak ditemukan');
   const models = Object.fromEntries(modelTiers.map(tier => [tier, text(input['model_' + tier], 100, 'Model ' + tier)]));
