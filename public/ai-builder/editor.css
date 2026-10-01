@@ -1,4 +1,4 @@
-/* Editor profil AI: bilah atas tunggal, kanvas penuh dengan panel samping (inspector atau uji coba), tabel koleksi,
+/* Editor profil AI: bilah atas, kanvas dengan pengaturan node di bawah dan panel Uji/Asisten AI, tabel koleksi,
    dan pengaturan dua kolom. Warna kategori node: AI ungu, Logika kuning tua, Data biru, Media merah muda, Alur abu. */
 :root {
   --bg: #f3f4f1;
@@ -38,7 +38,7 @@
   --on-accent: #fff;
   --overlay: rgba(255, 255, 255, 0.92);
   --edge-dim: #cdd2cd;
-  --side: 380px;
+  --side: 400px;
   --sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   font-family: var(--sans);
@@ -630,20 +630,32 @@ label:has(> input[type='checkbox']) {
 /* Tata letak editor */
 #editor {
   height: calc(100vh - 52px);
+  height: calc(100dvh - 52px);
 }
 .tab-panel {
   height: 100%;
 }
 .flow {
+  --node-panel-height: 340px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--side);
+  grid-template-rows: minmax(0, 1fr) var(--node-panel-height);
+  grid-template-areas: 'canvas side' 'node side';
+  min-height: 0;
 }
-.flow.testing {
-  --side: 420px;
+.flow.side-hidden {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'canvas' 'node';
+}
+.flow.node-panel-collapsed {
+  grid-template-rows: minmax(0, 1fr) 48px;
 }
 
 /* Kanvas */
 #viewport {
+  grid-area: canvas;
+  min-height: 0;
+  min-width: 0;
   position: relative;
   overflow: hidden;
   background-color: var(--bg);
@@ -808,10 +820,6 @@ label:has(> input[type='checkbox']) {
 .palette-item .node-illustration {
   width: 30px;
   height: 30px;
-}
-.inspector-head .node-illustration {
-  width: 44px;
-  height: 44px;
 }
 .item-card .node-illustration,
 .pill .node-illustration {
@@ -1089,15 +1097,133 @@ label:has(> input[type='checkbox']) {
   display: none;
 }
 
+/* Pengaturan node di bawah kanvas; panel percakapan tetap mendapat seluruh tinggi editor. */
+.node-panel {
+  grid-area: node;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.panel-resize {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 8px;
+  flex-shrink: 0;
+  cursor: ns-resize;
+  touch-action: none;
+  background: var(--surface-2);
+}
+.panel-resize::after {
+  content: '';
+  width: 36px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--line-2);
+}
+.panel-resize:hover::after,
+.panel-resize:focus-visible::after {
+  background: var(--accent);
+}
+.resizing-panel,
+.resizing-panel * {
+  cursor: ns-resize !important;
+  user-select: none;
+}
+.node-panel-bar {
+  height: 39px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+.node-panel-bar strong {
+  white-space: nowrap;
+}
+#node-panel-selection {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--ai-soft);
+  color: var(--ai);
+  border-color: transparent;
+}
+.node-panel-actions {
+  display: flex;
+  margin-left: auto;
+}
+.inspector-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.7fr);
+  align-items: start;
+}
+.inspector-form.single-column {
+  grid-template-columns: minmax(0, 1fr);
+}
+.inspector-options,
+.inspector-details {
+  min-width: 0;
+}
+.inspector-options {
+  border-right: 1px solid var(--line);
+}
+.inspector-options .segmented {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.inspector-details .sec {
+  border-bottom: 1px solid var(--line);
+}
+.inspector-prompt textarea {
+  min-height: 150px;
+}
 /* Panel samping */
 .side {
+  grid-area: side;
   background: var(--surface);
   border-left: 1px solid var(--line);
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
+.side-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px;
+  min-height: 46px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.side-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+}
+.side-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.side-tabs button:hover {
+  background: var(--surface-2);
+}
 .inspector {
+  min-height: 0;
   overflow: auto;
   flex-grow: 1;
 }
@@ -1120,44 +1246,26 @@ label:has(> input[type='checkbox']) {
   margin: 0 0 16px;
   font-size: 12px;
 }
-.inspector-head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+.node-name-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 12px 14px 20px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  align-items: flex-start;
+  gap: 4px;
 }
-.inspector-head label {
+.node-name-row label {
+  min-width: 0;
   flex-grow: 1;
-  gap: 2px;
 }
-.inspector-head label > span {
-  position: absolute;
-  left: -9999px;
+.node-name-actions {
+  display: flex;
+  padding-top: 21px;
+  flex-shrink: 0;
 }
-.inspector-head input {
-  border: 0 !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  min-height: 0 !important;
-  font-size: 16px !important;
-  font-weight: 600 !important;
-  background: transparent !important;
-}
-.inspector-head small {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--muted);
-}
-.inspector-head small.name-error {
+.name-error {
   color: var(--danger);
 }
-.inspector-head input[aria-invalid='true'] {
-  color: var(--danger) !important;
+.node-name-row input[aria-invalid='true'] {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 .sec {
   display: flex;
@@ -1447,6 +1555,7 @@ label:has(> input[type='checkbox']) {
   margin: 6px 0 0;
 }
 .chat {
+  min-height: 0;
   flex-grow: 1;
   overflow: auto;
   padding: 16px 16px 8px;
@@ -2013,7 +2122,7 @@ dialog::backdrop {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
-/* Layar sempit: panel samping pindah ke bawah kanvas, tab turun ke baris kedua, peta mini disembunyikan. */
+/* Layar sempit: pengaturan node dan percakapan tersusun di bawah kanvas. */
 @media (max-width: 1100px) {
   :root {
     --side: 340px;
@@ -2063,13 +2172,35 @@ dialog::backdrop {
   #editor {
     height: auto;
   }
-  .flow,
-  .flow.testing {
+  .flow {
     display: flex;
     flex-direction: column;
   }
   #viewport {
     height: 60vh;
+    flex-shrink: 0;
+  }
+  .node-panel {
+    height: var(--node-panel-height);
+    flex-shrink: 0;
+  }
+  .node-panel-collapsed .node-panel {
+    height: 48px;
+  }
+  .node-panel-bar {
+    padding-left: 12px;
+  }
+  .inspector-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inspector-options {
+    border-right: 0;
+  }
+  .inspector-details {
+    order: -1;
+  }
+  .inspector .sec {
+    padding: 14px 12px;
   }
   .node-picker {
     display: block;
@@ -2097,6 +2228,8 @@ dialog::backdrop {
     width: auto;
   }
   .side {
+    height: min(720px, 80dvh);
+    min-height: 480px;
     border-left: 0;
     border-top: 1px solid var(--line);
   }

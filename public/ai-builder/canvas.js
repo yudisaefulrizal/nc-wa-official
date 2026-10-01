@@ -12,6 +12,7 @@ function position(e) {
   return { x: (e.clientX - box.left - state.pan.x) / state.zoom, y: (e.clientY - box.top - state.pan.y) / state.zoom };
 }
 function selectNode(id) {
+  if (id) openNodeSettings();
   state.selected = id;
   renderCanvas();
   renderInspector();
@@ -133,7 +134,6 @@ function renderCanvas() {
     heading.onkeydown = e => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        showSide('inspector');
         selectNode(n.id);
       }
     };
@@ -391,7 +391,7 @@ function startDrag(e, n) {
   if (e.button !== 0) return;
   e.preventDefault();
   closePalette();
-  showSide('inspector');
+  openNodeSettings();
   state.selected = n.id;
   checkpoint();
   const p = position(e);
@@ -469,7 +469,6 @@ function addNode(type, x, y) {
   const spot = freeSpot(Math.max(0, x), Math.max(0, y));
   const n = newNode(type, spot.x, spot.y);
   mutate(() => state.document.nodes.push(n));
-  showSide('inspector');
   selectNode(n.id);
 }
 function addAtCenter(type) {

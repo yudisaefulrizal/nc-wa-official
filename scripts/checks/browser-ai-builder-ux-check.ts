@@ -77,6 +77,65 @@ try {
     ids.push(id);
     const inspector = page.locator('#inspector');
     const saved = () => page.locator('#dirty').filter({ hasText: 'Tersimpan' }).waitFor();
+    // Pengaturan berada di bawah kanvas; memilih node tidak mengganti panel percakapan yang aktif.
+    assert.equal(await page.locator('#side [role="tab"]').count(), 2);
+    assert.equal(await page.locator('#side #inspector').count(), 0);
+    await page.locator('#tester').waitFor();
+    const chooseNode = async (node: string) => {
+      if (width === 390) await page.locator('#node-picker select').selectOption(node);
+      else await page.locator(`[data-node="${node}"] .node-heading`).click();
+    };
+    await chooseNode('layanan');
+    await inspector.getByLabel('Instruksi', { exact: true }).waitFor();
+    assert.equal(await page.locator('#tester').isVisible(), true);
+    const canvasBox = (await page.locator('#viewport').boundingBox())!;
+    const panelBox = (await page.locator('#node-panel').boundingBox())!;
+    const sideBox = (await page.locator('#side').boundingBox())!;
+    assert.ok(panelBox.y >= canvasBox.y + canvasBox.height - 1);
+    if (width === 1280) {
+      assert.ok(sideBox.x >= panelBox.x + panelBox.width - 1);
+      assert.equal(Math.round(sideBox.y), Math.round(canvasBox.y));
+      assert.equal(Math.round(sideBox.height), Math.round(canvasBox.height + panelBox.height));
+    } else assert.ok(sideBox.y >= panelBox.y + panelBox.height - 1);
+    await page.locator('#assistant-tab').click();
+    await chooseNode('router');
+    assert.equal(await page.locator('#assistant').isVisible(), true);
+    assert.equal(await inspector.isVisible(), true);
+    // Tab dapat dipilih dengan keyboard tanpa kehilangan node yang sedang diatur.
+    await page.locator('#assistant-tab').focus();
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await page.locator('#tester-tab').getAttribute('aria-selected'), 'true');
+    assert.equal(await page.locator('#node-panel-selection').innerText(), 'Router');
+    await page.locator('#node-panel-toggle').click();
+    assert.equal(await inspector.isHidden(), true);
+    assert.equal(await page.locator('#tester').isVisible(), true);
+    await chooseNode('layanan');
+    assert.equal(await inspector.isVisible(), true);
+    // Ukuran panel berubah tanpa mengubah zoom; pembatas tidak menggeser node di kanvas.
+    const zoom = await page.locator('#fit').innerText();
+    const beforeResize = (await page.locator('#node-panel').boundingBox())!.height;
+    if (width === 1280) {
+      const grip = (await page.locator('#node-panel-resize').boundingBox())!;
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2 - 50);
+      await page.mouse.up();
+    } else {
+      await page.locator('#node-panel-resize').focus();
+      await page.keyboard.press('ArrowUp');
+    }
+    const resized = (await page.locator('#node-panel').boundingBox())!.height;
+    assert.ok(resized > beforeResize + 25);
+    assert.equal(await page.locator('#fit').innerText(), zoom);
+    await page.reload();
+    await page.locator('[data-node="layanan"]').waitFor();
+    assert.ok(Math.abs((await page.locator('#node-panel').boundingBox())!.height - resized) <= 2);
+    await chooseNode('layanan');
+    await page.locator('#node-panel-expand').click();
+    assert.ok((await page.locator('#node-panel').boundingBox())!.height > resized);
+    await page.locator('#node-panel-expand').click();
+    assert.ok(Math.abs((await page.locator('#node-panel').boundingBox())!.height - resized) <= 2);
+    await page.screenshot({ path: join(screenshots, 'ai-builder-panels-' + width + '.png'), fullPage: true });
     // Tema: tombol mengganti terang ↔ gelap, pilihan bertahan setelah dimuat ulang.
     await page.locator('#theme-toggle').click();
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark');
@@ -125,11 +184,12 @@ try {
     // Spasi di nama otomatis menjadi _.
     await name.fill('Sapaan malam');
     assert.equal(await name.inputValue(), 'Sapaan_malam');
-    await inspector.locator('.inspector-head small', { hasText: 'nodes.sapaan_malam' }).waitFor();
+    await page.locator('#node-panel-selection', { hasText: 'Sapaan_malam' }).waitFor();
     assert.equal(await inspector.getByText('Nama sudah dipakai node lain.').isHidden(), true);
     await inspector.getByRole('button', { name: 'Hapus node', exact: true }).click();
 
     // Instruksi: variabel tak dikenal ditandai, variabel dari menu disisipkan di posisi kursor.
+    await page.locator('#test-toggle').click();
     await select('layanan');
     const prompt = inspector.getByLabel('Instruksi', { exact: true });
     const original = await prompt.inputValue();
@@ -147,6 +207,15 @@ try {
       (await exported()).nodes.find((n: any) => n.id === 'layanan').prompt,
       original + ' Sapa {{customer.name}}',
     );
+    assert.equal(await page.locator('#tester').isVisible(), true);
+    await page.reload();
+    await page.locator('[data-node="layanan"]').waitFor();
+    await select('layanan');
+    assert.equal(
+      await inspector.getByLabel('Instruksi', { exact: true }).inputValue(),
+      original + ' Sapa {{customer.name}}',
+    );
+    assert.equal(await page.locator('#tester').isVisible(), true);
 
     // Memutus koneksi keluar memunculkan masalah; menu masalah membuka node terkait dan Terbitkan dinonaktifkan.
     const next = (await exported()).edges.find((e: any) => e.source === 'layanan' && e.port === 'next').target;
@@ -156,7 +225,7 @@ try {
     await select('router');
     await page.locator('#issues-button').click();
     await page.locator('#issues-list .menu-item').first().click();
-    await inspector.locator('.inspector-head small', { hasText: 'nodes.layanan' }).waitFor();
+    await page.locator('#node-panel-selection', { hasText: 'Layanan' }).waitFor();
     await inspector.getByLabel('Lanjut', { exact: true }).selectOption(next);
     await page.locator('#issues-button').waitFor({ state: 'hidden' });
     await saved();
@@ -177,6 +246,10 @@ try {
     await page.locator('#trace-banner').waitFor();
     await page.locator('#chat .trace-step', { hasText: 'Router' }).click();
     await page.locator('#chat .trace-detail').getByText('Hasil').waitFor();
+    await page.locator('#node-panel-selection', { hasText: 'Router' }).waitFor();
+    await page.locator('#chat .trace-detail').getByRole('button', { name: 'Buka node', exact: true }).click();
+    assert.equal(await page.locator('#tester').isVisible(), true);
+    await page.locator('#node-panel-selection', { hasText: 'Router' }).waitFor();
     // Panggilan model di jejak: prompt per peran, jawaban mentah, dan hasil pemeriksaan.
     const call = page.locator('#chat .trace-detail .model-call').first();
     await call.locator('summary').click();

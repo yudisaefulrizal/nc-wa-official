@@ -253,5 +253,3 @@ $('assistant-new').onclick = () => {
   assistant.proposals = [];
   $('assistant-chat').replaceChildren($('assistant-chat').firstElementChild);
 };
-$('assistant-toggle').onclick = () => showSide(state.side === 'assistant' ? 'inspector' : 'assistant');
-$('close-assistant').onclick = () => showSide('inspector');

@@ -1,4 +1,4 @@
-<!-- Editor profil AI: halaman buat profil, kanvas alur dengan inspector/uji coba, struktur koleksi, dan pengaturan. -->
+<!-- Editor profil AI: kanvas dengan pengaturan node di bawah, panel Uji/Asisten AI, koleksi, dan pengaturan. -->
 <!doctype html>
 <html lang="id">
   <head>
@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/ai-builder/editor.css" />
     <script defer src="/ai-builder/common.js"></script>
     <script defer src="/ai-builder/editor.js"></script>
+    <script defer src="/ai-builder/panels.js"></script>
     <script defer src="/ai-builder/canvas.js"></script>
     <script defer src="/ai-builder/inspector.js"></script>
     <script defer src="/ai-builder/samples.js"></script>
@@ -132,9 +133,65 @@
           <div id="minimap" aria-hidden="true"></div>
           <div id="connection-hint" class="canvas-hint" role="status"></div>
         </div>
-        <aside id="side" class="side">
+        <section id="node-panel" class="node-panel" aria-labelledby="node-panel-title">
+          <div
+            id="node-panel-resize"
+            class="panel-resize"
+            role="separator"
+            tabindex="0"
+            aria-label="Atur tinggi pengaturan node"
+            aria-orientation="horizontal"
+            aria-controls="node-panel"
+          ></div>
+          <div class="node-panel-bar">
+            <strong id="node-panel-title">Pengaturan node</strong>
+            <span id="node-panel-selection" class="chip" hidden></span>
+            <span class="node-panel-actions">
+              <button
+                id="node-panel-expand"
+                class="icon-btn ghost"
+                type="button"
+                aria-label="Perbesar pengaturan node"
+                data-icon="expand"
+              ></button>
+              <button
+                id="node-panel-toggle"
+                class="icon-btn ghost"
+                type="button"
+                aria-label="Ciutkan pengaturan node"
+                aria-expanded="true"
+                aria-controls="inspector"
+                data-icon="down"
+              ></button>
+            </span>
+          </div>
           <div id="inspector" class="inspector"></div>
-          <div id="tester" class="tester" hidden>
+        </section>
+        <aside id="side" class="side" aria-label="Uji dan Asisten AI">
+          <div class="side-tabs" role="tablist" aria-label="Panel percakapan">
+            <button
+              id="tester-tab"
+              type="button"
+              role="tab"
+              aria-controls="tester"
+              aria-selected="true"
+              data-icon="play"
+            >
+              Uji
+            </button>
+            <button
+              id="assistant-tab"
+              type="button"
+              role="tab"
+              aria-controls="assistant"
+              aria-selected="false"
+              tabindex="-1"
+              data-icon="agent"
+            >
+              Asisten AI
+            </button>
+          </div>
+          <div id="tester" class="tester" role="tabpanel" aria-labelledby="tester-tab" hidden>
             <div class="tester-head">
               <div>
                 <strong>Uji coba</strong>
@@ -196,7 +253,7 @@
               </div>
             </form>
           </div>
-          <div id="assistant" class="tester assistant" hidden>
+          <div id="assistant" class="tester assistant" role="tabpanel" aria-labelledby="assistant-tab" hidden>
             <div class="tester-head">
               <div>
                 <strong>Asisten AI</strong>

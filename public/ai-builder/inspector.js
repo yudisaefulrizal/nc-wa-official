@@ -36,6 +36,8 @@ function segmented(label, choices, current, onpick, className = 'segmented') {
 function renderInspector() {
   const host = $('inspector'),
     n = state.document?.nodes.find(n => n.id === state.selected);
+  $('node-panel-selection').hidden = !n;
+  $('node-panel-selection').textContent = n?.label ?? '';
   host.replaceChildren();
   if (!n) {
     const empty = el('div', undefined, 'inspector-empty');
@@ -48,8 +50,7 @@ function renderInspector() {
     host.append(empty);
     return;
   }
-  const head = el('div', undefined, 'inspector-head'),
-    idText = el('small'),
+  const identity = section(),
     nameError = el('small', 'Nama sudah dipakai node lain. Gunakan nama yang berbeda.', 'name-error'),
     name = field('Nama node', n.label, v => {
       // Spasi langsung menjadi _ saat diketik; panjang teks tetap, jadi posisi kursor dipertahankan.
@@ -63,9 +64,9 @@ function renderInspector() {
       showName();
     }),
     input = name.querySelector('input');
-  // ID mengikuti nama dan dipakai di variabel, jadi ditampilkan langsung saat nama diketik.
+  // Penanda di bilah panel mengikuti nama tanpa menambah baris identitas di atas pengaturan.
   const showName = () => {
-    idText.textContent = kinds[n.type][0] + ' · nodes.' + n.id;
+    $('node-panel-selection').textContent = n.label;
     const dup = duplicateLabel(n) || !n.label.trim();
     nameError.textContent = n.label.trim()
       ? 'Nama sudah dipakai node lain. Gunakan nama yang berbeda.'
@@ -73,12 +74,12 @@ function renderInspector() {
     nameError.hidden = !dup;
     input.setAttribute('aria-invalid', String(dup));
   };
-  compact(name);
-  name.append(idText, nameError);
+  name.append(nameError);
   showName();
-  head.append(
-    nodeIcon(n.type),
-    name,
+  identity.classList.add('inspector-option');
+  const row = el('div', undefined, 'node-name-row'),
+    actions = el('div', undefined, 'node-name-actions');
+  actions.append(
     iconButton('copy', 'Salin node', () => {
       const copy = structuredClone(n);
       copy.label = uniqueLabel(n.label, state.document.nodes);
@@ -90,13 +91,10 @@ function renderInspector() {
       selectNode(copy.id);
     }),
     iconButton('trash', 'Hapus node', () => removeNode(n.id)),
-    iconButton('close', 'Tutup', () => {
-      state.selected = null;
-      renderInspector();
-      renderCanvas();
-    }),
   );
-  host.append(head);
+  row.append(name, actions);
+  identity.append(row);
+  host.append(identity);
   const issues = state.issues.filter(i => i.node === n.id);
   if (issues.length) {
     const box = section();
@@ -137,7 +135,9 @@ function renderInspector() {
       ['structured', 'Terstruktur'],
       ...(n.type === 'router' ? [['decision', 'Keputusan']] : []),
     ];
+    prompt.classList.add('inspector-prompt');
     const model = section('Tier model');
+    model.classList.add('inspector-option');
     model.append(
       segmented('Tier model', tiers, n.tier, value => {
         mutate(() => (n.tier = value));
@@ -146,6 +146,7 @@ function renderInspector() {
       edit('model', 'Model khusus (opsional)'),
     );
     const contextMemory = section();
+    contextMemory.classList.add('inspector-option');
     const contextNodes = state.document.nodes.filter(m => m.type === 'context_memory');
     contextMemory.append(
       field(
@@ -169,6 +170,7 @@ function renderInspector() {
       ),
     );
     const memory = section();
+    memory.classList.add('inspector-option');
     memory.append(
       field(
         'Memori percakapan',
@@ -509,12 +511,24 @@ function renderInspector() {
     host.append(box);
   }
   host.append(connectionsSection(n));
+  // Pilihan ringkas di kiri, sehingga instruksi dan formulir mendapat ruang yang lebih lebar.
+  const form = el('div', undefined, 'inspector-form'),
+    options = el('div', undefined, 'inspector-options'),
+    details = el('div', undefined, 'inspector-details');
+  for (const child of [...host.children]) {
+    (child.classList.contains('inspector-option') ? options : details).append(child);
+  }
+  if (options.childElementCount) form.append(options);
+  else form.classList.add('single-column');
+  form.append(details);
+  host.append(form);
 }
 // Koneksi masuk sebagai ringkasan, koneksi keluar bisa diubah per port.
 function connectionsSection(n) {
   const box = section('Koneksi'),
     incoming = state.document.edges.filter(e => e.target === n.id),
     list = el('div', undefined, 'link-list');
+  box.classList.add('inspector-option');
   if (n.type !== 'input' && n.type !== 'memory') {
     list.append(el('span', 'Masuk'));
     const sources = incoming.map(e => {

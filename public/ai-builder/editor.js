@@ -104,6 +104,7 @@ const icons = {
   alert: '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/>',
   down: '<path d="M6 9l6 6 6-6"/>',
   up: '<path d="M18 15l-6-6-6 6"/>',
+  expand: '<path d="M9 3H3v6M15 3h6v6M3 15v6h6M21 15v6h-6"/>',
   braces:
     '<path d="M8 4c-2 0-3 1-3 3v2c0 1.5-1 2.5-2 3 1 .5 2 1.5 2 3v2c0 2 1 3 3 3M16 4c2 0 3 1 3 3v2c0 1.5 1 2.5 2 3-1 .5-2 1.5-2 3v2c0 2-1 3-3 3"/>',
   input: '<path d="M4 5h16v11H9l-5 4z"/>',
@@ -238,7 +239,7 @@ const state = {
   history: [],
   context: null,
   controller: null,
-  side: 'inspector',
+  side: 'tester',
   collection: 0,
   openField: -1,
 };
@@ -506,7 +507,7 @@ async function openProfile(id, skipConfirm = false) {
   $('revision').hidden = false;
   history.replaceState(null, '', '?profile=' + id);
   showTab('flow');
-  showSide('inspector');
+  showSide('tester', false);
   requestAnimationFrame(fitCanvas);
 }
 function issueText(issue) {
@@ -516,7 +517,6 @@ function openIssue(issue) {
   $('issues-menu').hidePopover?.();
   showTab('flow');
   if (issue.node) {
-    showSide('inspector');
     selectNode(issue.node);
   }
 }
@@ -650,27 +650,6 @@ function showTab(tab) {
   if (tab === 'settings') task(loadSettings);
 }
 for (const b of document.querySelectorAll('[data-tab]')) b.onclick = () => showTab(b.dataset.tab);
-// Panel samping kanvas: inspector node atau uji coba.
-function showSide(mode) {
-  state.side = mode;
-  $('inspector').hidden = mode !== 'inspector';
-  $('tester').hidden = mode !== 'tester';
-  $('assistant').hidden = mode !== 'assistant';
-  $('flow').classList.toggle('testing', mode === 'tester' || mode === 'assistant');
-  $('test-toggle').setAttribute('aria-pressed', String(mode === 'tester'));
-  $('assistant-toggle').setAttribute('aria-pressed', String(mode === 'assistant'));
-  if (mode === 'tester') {
-    showTab('flow');
-    $('test-message').focus();
-  }
-  if (mode === 'assistant') {
-    showTab('flow');
-    $('assistant-message').focus();
-  }
-}
-$('test-toggle').onclick = () => showSide(state.side === 'tester' ? 'inspector' : 'tester');
-$('close-test').onclick = () => showSide('inspector');
-
 $('create').onclick = () =>
   task(async () => {
     const nodes = [];
@@ -977,7 +956,6 @@ function renderCollections() {
   };
   const openNode = id => () => {
     showTab('flow');
-    showSide('inspector');
     selectNode(id);
   };
   for (const r of use.routers) used.append(pill('router', r.label + ' (pemilihan)', openNode(r.id)));
@@ -1608,9 +1586,8 @@ function renderTrace(turn) {
     if (s.duration !== undefined) row.append(el('span', seconds(s.duration), 'dur'));
     row.onclick = () => {
       turn.open = turn.open === s.node ? null : s.node;
-      state.selected = s.node;
       renderTrace(turn);
-      renderCanvas();
+      selectNode(s.node);
     };
     box.append(row);
     if (turn.open === s.node) box.append(traceDetail(s));
@@ -1690,7 +1667,6 @@ function traceDetail(s) {
     btn(
       'Buka node',
       () => {
-        showSide('inspector');
         selectNode(s.node);
       },
       'btn small',
