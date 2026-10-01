@@ -758,8 +758,29 @@
                     tersimpan saat dicabut.
                   </p>
                 </div>
-                <button type="button" id="ai-profile-new">+ Buat data profil</button>
+                <div class="row-actions">
+                  <button type="button" id="ai-profile-import" class="secondary">Import data profil</button>
+                  <button type="button" id="ai-profile-new">+ Buat data profil</button>
+                </div>
               </div>
+              <dialog id="ai-profile-import-dialog">
+                <form id="ai-profile-import-form">
+                  <h3>Import data profil</h3>
+                  <p>
+                    Import file JSON hasil export menjadi data profil baru. Profil AI asal harus tersedia dan aktif.
+                  </p>
+                  <p>Record pelanggan dan lampiran ikut diimpor. Token API perlu diisi ulang pada sumber data.</p>
+                  <label
+                    >File data profil <input type="file" name="archive" accept=".json,application/json" required
+                  /></label>
+                  <label>Nama data profil baru <input name="name" maxlength="100" required /></label>
+                  <p id="ai-profile-import-error" class="error" role="alert"></p>
+                  <div class="row-actions">
+                    <button type="button" id="ai-profile-import-cancel" class="secondary">Batal</button>
+                    <button type="submit">Import data profil</button>
+                  </div>
+                </form>
+              </dialog>
               <div id="ai-profiles-list" class="ai-profiles-list"></div>
               <aside class="ai-info" id="ai-profile-types-info"></aside>
             </section>

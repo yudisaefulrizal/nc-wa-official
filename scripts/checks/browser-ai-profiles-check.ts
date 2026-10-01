@@ -2,7 +2,7 @@
 // dan mengelolanya langsung, mencabut, dan halaman Profil AI pemilik, di lebar desktop dan ponsel.
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import net from 'node:net';
@@ -141,7 +141,7 @@ try {
   assert.deepEqual(await page.locator('[data-ai-tab]:visible').allTextContents(), [
     'Percakapan',
     'Uji Coba',
-    'Integrasi',
+    'API & Webhook',
   ]);
   // Memasang data profil baru dari dialog.
   await strip.getByRole('button', { name: 'Pasang profil' }).click();
@@ -188,6 +188,20 @@ try {
     /cabang-dago[\s\S]*toko-utama/,
   );
   await page.locator('#ai-profiles-view').screenshot({ path: join(screenshots, 'profiles-list.png') });
+  const downloading = page.waitForEvent('download');
+  await card.getByRole('button', { name: 'Export data profil' }).click();
+  const download = await downloading;
+  const archive = await readFile((await download.path())!);
+  await page.locator('#ai-profile-import').click();
+  await page
+    .locator('#ai-profile-import-form [name=archive]')
+    .setInputFiles({ name: 'profil.json', mimeType: 'application/json', buffer: archive });
+  await page.locator('#ai-profile-import-form [name=name]').fill('Hasil import browser');
+  await page.locator('#ai-profile-import-form [type=submit]').click();
+  await page.locator('.ai-profile-card', { hasText: 'Hasil import browser' }).waitFor();
+  const imported = (await ai.dataProfiles(client)).find(p => p.name === 'Hasil import browser')!;
+  assert.deepEqual(imported.sessions, []);
+  await ai.deleteDataProfile(client, imported.id);
   await card.getByRole('button', { name: 'Kelola isi' }).click();
   await page.locator('#ai-manage-name', { hasText: 'Promo Lebaran' }).waitFor();
   assert.deepEqual(await page.locator('[data-ai-tab]:visible').allTextContents(), ['Knowledge', 'Uji Coba']);

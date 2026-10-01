@@ -298,12 +298,16 @@ p.ai-warning {
 }
 .ai-profile-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: auto;
 }
 .client-workspace #ai .ai-profile-actions button {
   flex: 1;
   min-height: 40px;
+}
+.client-workspace #ai .ai-profile-actions .ai-profile-export {
+  flex: 1 0 100%;
 }
 .ai-card-menu {
   position: relative;

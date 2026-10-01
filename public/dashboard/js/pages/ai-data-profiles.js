@@ -84,6 +84,9 @@ function renderDataProfiles() {
       button('Uji Coba', () => manageProfile(p, 'trial')),
     );
     actions.lastElementChild.classList.add('secondary');
+    const exportButton = button('Export data profil', () => exportProfile(p));
+    exportButton.classList.add('secondary', 'ai-profile-export');
+    actions.append(exportButton);
     card.append(head, stats, used, actions);
     list.append(card);
   }
@@ -358,3 +361,61 @@ $('ai-profile-duplicate-form').onsubmit = e => {
         : 'Data profil diduplikat beserta data umumnya.';
   });
 };
+
+// Arsip JSON portabel; token API dan pemasangan sesi tidak disertakan.
+async function exportProfile(profile) {
+  const archive = await api(profileBase(profile.id) + '/export');
+  const url = URL.createObjectURL(new Blob([JSON.stringify(archive)], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = (profile.name.replace(/[^a-z0-9_-]/gi, '_') || 'data-profil') + '.json';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  $('message').textContent = 'Data profil diexport. Token API tidak disertakan.';
+}
+$('ai-profile-import').onclick = () => {
+  $('ai-profile-import-form').reset();
+  $('ai-profile-import-error').textContent = '';
+  $('ai-profile-import-dialog').showModal();
+};
+$('ai-profile-import-cancel').onclick = () => $('ai-profile-import-dialog').close();
+$('ai-profile-import-form').onsubmit = event => {
+  event.preventDefault();
+  const f = event.currentTarget,
+    submit = f.querySelector('[type=submit]');
+  if (submit.disabled) return;
+  run(async () => {
+    submit.disabled = true;
+    $('ai-profile-import-cancel').disabled = true;
+    $('ai-profile-import-error').textContent = '';
+    try {
+      const file = f.elements.archive.files[0];
+      if (!file || file.size > 150 * 1024 * 1024) throw Error('Pilih file export JSON maksimal 150 MB.');
+      let archive;
+      try {
+        archive = JSON.parse(await file.text());
+      } catch {
+        throw Error('File bukan JSON yang valid. Pilih file hasil export data profil.');
+      }
+      await api(
+        '/ai/data-profiles/import',
+        'POST',
+        { name: f.elements.name.value.trim(), archive },
+        { 'Content-Type': 'application/octet-stream' },
+      );
+      $('ai-profile-import-dialog').close();
+      await loadDataProfiles();
+      $('message').textContent = 'Data profil berhasil diimport. Isi ulang token sumber API jika digunakan.';
+    } catch (error) {
+      $('ai-profile-import-error').textContent = error.message;
+    } finally {
+      submit.disabled = false;
+      $('ai-profile-import-cancel').disabled = false;
+    }
+  });
+};
+$('ai-profile-import-dialog').addEventListener('cancel', event => {
+  if ($('ai-profile-import-form').querySelector('[type=submit]').disabled) event.preventDefault();
+});

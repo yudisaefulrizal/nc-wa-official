@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -711,3 +711,68 @@ for (const scenario of ['before', 'after', 'image_failed', 'caption_failed'] as 
     assert.equal(outbox.slice(start).filter(o => o.to.startsWith(customer)).length, expected.length);
     await rm(join(storagePaths().recordFiles, t.id), { recursive: true, force: true });
   });
+
+// Arsip diuji melalui HTTP dengan parser khusus yang juga dipakai dashboard.
+test('Data profile export/import preserves records, relations and files, isolates accounts and rolls back invalid archives', async () => {
+  const a = await tenant(),
+    b = await tenant();
+  const d = routedGraph('Arsip');
+  d.collections = [
+    {
+      id: 'items',
+      name: 'Items',
+      owner: 'customer',
+      fields: [
+        { id: 'name', label: 'Nama', type: 'text', required: true, options: [], collection: '' },
+        { id: 'file', label: 'File', type: 'file', required: false, options: [], collection: '' },
+        { id: 'parent', label: 'Induk', type: 'relation', required: false, options: [], collection: 'items' },
+      ],
+    },
+  ];
+  const type = await publishGraph(owner, d);
+  graphs.push(type);
+  const original = await service.createDataProfile(a.id, { name: 'Arsip asli', profile_type: type });
+  await service.saveDataProfileField(a.id, original.id, 'behavior', 'Ramah');
+  const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#fff' } })
+    .png()
+    .toBuffer();
+  const file = await uploadRecordFile(a.id, original.id, 'foto.png', png);
+  const parent = await recordStore.writeRecord(a.id, original.id, 'items', 'create', {
+    customer,
+    data: { name: 'Induk', file: file.id },
+  });
+  await recordStore.writeRecord(a.id, original.id, 'items', 'create', {
+    customer,
+    data: { name: 'Anak', parent: parent.id },
+  });
+  const archive = (await a.api('get', '/ai/data-profiles/' + original.id + '/export').expect(200)).body;
+  await b.api('get', '/ai/data-profiles/' + original.id + '/export').expect(404);
+  const upload = (value: unknown, name = 'Hasil import') =>
+    b
+      .api('post', '/ai/data-profiles/import')
+      .set('Content-Type', 'application/octet-stream')
+      .send(JSON.stringify({ name, archive: value }));
+  const imported = (await upload(archive).expect(201)).body;
+  assert.equal(imported.behavior, 'Ramah');
+  assert.deepEqual(imported.sessions, []);
+  const saved = await recordStore.readRecords(b.id, imported.id, 'items');
+  const nextParent = saved.records.find(r => r.data.name === 'Induk')!;
+  const child = saved.records.find(r => r.data.name === 'Anak')!;
+  assert.notEqual(nextParent.id, parent.id);
+  assert.equal(child.data.parent, nextParent.id);
+  assert.equal(child.customer, customer);
+  assert.notEqual(nextParent.data.file, file.id);
+  assert.deepEqual(await readFile(join(storagePaths().recordFiles, b.id, String(nextParent.data.file))), png);
+  const beforeFiles = (await readdir(join(storagePaths().recordFiles, b.id))).sort();
+  const invalid = structuredClone(archive);
+  invalid.records.find((r: any) => r.data.name === 'Anak').data.parent = randomUUID();
+  await upload(invalid, 'Gagal').expect(400);
+  assert.deepEqual((await readdir(join(storagePaths().recordFiles, b.id))).sort(), beforeFiles);
+  assert.equal((await service.dataProfiles(b.id)).length, 1);
+  await upload({ ...archive, version: 99 }, 'Versi salah').expect(400);
+  await upload(archive).expect(400);
+  await setProfileEnabled(owner, type, false);
+  await upload(archive, 'Nonaktif').expect(409);
+  await service.deleteDataProfile(a.id, original.id);
+  await service.deleteDataProfile(b.id, imported.id);
+});

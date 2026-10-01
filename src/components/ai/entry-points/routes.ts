@@ -2,6 +2,7 @@
 // Percakapan. Record koleksi data profil ada di builder-routes.ts. Router sudah terautentikasi: res.locals berisi
 // accountId dan SessionManager akun itu.
 import express from 'express';
+import { exportDataProfile, importDataProfile, profileArchiveBytes } from '../domain/data-profile-transfer.js';
 import { ApiError } from '../../../libraries/errors.js';
 import type { AIService } from '../domain/service.js';
 import { clientProfiles } from '../domain/profiles/registry.js';
@@ -26,6 +27,14 @@ export function aiRoutes(router: express.Router, { ai }: { ai: AIService }) {
   router.get('/ai/data-profiles', async (_req, res) => res.json(await ai.dataProfiles(res.locals.accountId)));
   router.post('/ai/data-profiles', async (req, res) =>
     res.status(201).json(await ai.createDataProfile(res.locals.accountId, req.body)),
+  );
+  router.get('/ai/data-profiles/:profile/export', async (req, res) =>
+    res.json(await exportDataProfile(ai, res.locals.accountId, req.params.profile)),
+  );
+  router.post(
+    '/ai/data-profiles/import',
+    express.json({ type: 'application/octet-stream', limit: profileArchiveBytes + 1024 }),
+    async (req, res) => res.status(201).json(await importDataProfile(ai, res.locals.accountId, req.body)),
   );
   router.get('/ai/data-profiles/:profile', async (req, res) =>
     res.json(await ai.dataProfile(res.locals.accountId, req.params.profile)),
