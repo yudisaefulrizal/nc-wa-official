@@ -131,12 +131,13 @@ try {
   await page.locator('#admin-health').waitFor();
   for (const [sub, form] of [
     ['plans', 'planform'],
+    ['plans', 'adjustform'],
     ['accounts', 'adjustform'],
     ['settings', 'midtransform'],
   ]) {
     await page.locator('#adminsubmenu a[href="/dashboard/admin/' + sub + '"]').click();
     assert.equal(await page.locator('#' + form).isVisible(), false);
-    await page.locator('[data-open="' + form + '-modal"]').click();
+    await page.locator('#admin-' + sub + ' [data-open="' + form + '-modal"]').click();
     await page.locator('#' + form).waitFor();
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#' + form).isVisible(), false);

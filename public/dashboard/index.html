@@ -2140,8 +2140,8 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
           <details id="ownerdocs">
             <summary>Pengelolaan layanan</summary>
             <p>
-              Kelola paket melalui Tambah paket atau Edit. Di Akun pelanggan, gunakan Sesuaikan kredit untuk perubahan
-              saldo dengan alasan yang tercatat dalam audit.
+              Kelola paket melalui Tambah paket atau Edit. Di Akun pelanggan, gunakan Sesuaikan kredit pesan untuk
+              perubahan saldo dengan alasan yang tercatat dalam audit.
             </p>
             <p>
               Biaya tambahan pelanggan Rp0. MDR ditanggung layanan. Simpan Server Key sesuai lingkungan; order lama
@@ -2165,6 +2165,9 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
                 ></label
               ><button>Simpan harga</button>
             </form>
+            <h3>Penyesuaian kredit pesan</h3>
+            <p>Tambah atau kurangi kredit pesan pelanggan dengan alasan yang tercatat.</p>
+            <button type="button" data-open="adjustform-modal">Sesuaikan kredit pesan</button>
             <dialog id="planform-modal" aria-labelledby="planform-title">
               <div class="modal-heading">
                 <h2 id="planform-title">Paket</h2>
@@ -2206,25 +2209,35 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
           <section class="admin-page" id="admin-accounts" hidden>
             <h2>Akun pelanggan</h2>
             <ul id="accounts"></ul>
-            <button type="button" data-open="adjustform-modal">Sesuaikan kredit</button>
-            <dialog id="adjustform-modal" aria-labelledby="adjustform-title">
-              <div class="modal-heading">
-                <h2 id="adjustform-title">Penyesuaian kredit</h2>
-                <button type="button" class="secondary" data-close="adjustform-modal" aria-label="Tutup modal">
-                  Tutup
-                </button>
-              </div>
-              <form id="adjustform">
-                <label
-                  >Akun pelanggan<select name="accountId" id="adjustaccount" required>
-                    <option value="">Pilih akun</option>
-                  </select></label
-                ><label>Jumlah (negatif untuk mengurangi)<input name="amount" type="number" required /></label
-                ><label>Alasan<input name="reason" required maxlength="200" /></label
-                ><button>Simpan penyesuaian</button>
-              </form>
-            </dialog>
+            <button type="button" data-open="adjustform-modal">Sesuaikan kredit pesan</button>
           </section>
+          <dialog id="adjustform-modal" aria-labelledby="adjustform-title">
+            <div class="modal-heading">
+              <h2 id="adjustform-title">Penyesuaian kredit pesan</h2>
+              <button type="button" class="secondary" data-close="adjustform-modal" aria-label="Tutup modal">
+                Tutup
+              </button>
+            </div>
+            <p>
+              Kredit ini mengikuti masa berlaku paket. Isi jumlah positif untuk menambah atau negatif untuk mengurangi.
+            </p>
+            <form id="adjustform">
+              <label
+                >Akun pelanggan<select name="accountId" id="adjustaccount" required>
+                  <option value="">Pilih akun</option>
+                </select></label
+              ><label
+                >Jumlah (negatif untuk mengurangi)<input
+                  name="amount"
+                  type="number"
+                  min="-100000000"
+                  max="100000000"
+                  step="1"
+                  required /></label
+              ><label>Alasan<input name="reason" required maxlength="200" /></label
+              ><button>Simpan penyesuaian kredit pesan</button>
+            </form>
+          </dialog>
           <section class="admin-page" id="admin-ai" hidden>
             <h2>Pengaturan AI</h2>
             <p id="ai-config-status"></p>

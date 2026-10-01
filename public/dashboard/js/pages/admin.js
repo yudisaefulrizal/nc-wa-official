@@ -131,7 +131,7 @@ async function admin() {
     new Option('Pilih akun', ''),
     ...accounts.map(u => new Option(u.email, u.id)),
   );
-  table('accounts', ['Email', 'Peran', 'Status', 'Paket aktif', 'Sisa kredit', 'Tindakan'], accounts, u => {
+  table('accounts', ['Email', 'Peran', 'Status', 'Paket aktif', 'Sisa kredit pesan', 'Tindakan'], accounts, u => {
     if (u.role === 'owner')
       return [
         u.email,
@@ -149,6 +149,12 @@ async function admin() {
         await admin();
       }),
       button('Ganti password', async () => changePassword(u)),
+      button('Sesuaikan kredit pesan', async () => {
+        $('adjustform').reset();
+        $('adjustaccount').value = u.id;
+        $('adjustform-modal').showModal();
+        $('adjustform').elements.namedItem('amount').focus();
+      }),
     );
     return [
       u.email,
@@ -248,10 +254,10 @@ form('adjustform', async data => {
     requestId: adjustment.id,
   });
   adjustment = undefined;
-  await admin();
   $('adjustform-modal').close();
   $('adjustform').reset();
-  $('message').textContent = 'Penyesuaian tersimpan.';
+  $('message').textContent = 'Penyesuaian kredit pesan tersimpan.';
+  await admin();
 });
 document.querySelectorAll('[data-open]').forEach(
   b =>

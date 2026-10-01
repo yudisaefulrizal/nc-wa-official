@@ -80,6 +80,21 @@ try {
   await admin.locator('#message', { hasText: 'Harga kredit pesan tersimpan' }).waitFor();
   const [priceRow] = await db.execute<any[]>('SELECT wa_credit_price FROM billing_settings WHERE id=1');
   assert.equal(priceRow[0].wa_credit_price, 4000);
+  const beforeAdjustment = await basicWallet(client);
+  await admin.locator('#admin-plans [data-open="adjustform-modal"]').click();
+  await admin.locator('#adjustaccount').selectOption(client);
+  await admin.locator('#adjustform input[name="amount"]').fill('250');
+  await admin.locator('#adjustform input[name="reason"]').fill('Bonus pesan dari owner');
+  await admin.locator('#adjustform button').click();
+  await admin.locator('#message', { hasText: 'Penyesuaian kredit pesan tersimpan' }).waitFor();
+  assert.equal((await basicWallet(client)).balance, beforeAdjustment.balance + 250);
+  await admin.goto(origin + '/dashboard/admin/accounts');
+  await admin
+    .locator('#accounts tr', { hasText: client + '@test.invalid' })
+    .getByRole('button', { name: 'Sesuaikan kredit pesan' })
+    .click();
+  assert.equal(await admin.locator('#adjustaccount').inputValue(), client);
+  await admin.keyboard.press('Escape');
   await db.execute('UPDATE wallets SET purchased=40 WHERE account_id=?', [client]);
   // Klien melihat rincian saldo AI dan kredit AI di katalog paket.
   const clientContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
