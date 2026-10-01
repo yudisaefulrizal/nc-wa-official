@@ -1105,6 +1105,7 @@ label:has(> input[type='checkbox']) {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  container-type: inline-size;
   background: var(--surface);
   border-top: 1px solid var(--line);
 }
@@ -1158,19 +1159,48 @@ label:has(> input[type='checkbox']) {
   display: flex;
   margin-left: auto;
 }
+.inspector {
+  min-height: 0;
+  overflow: hidden;
+  flex-grow: 1;
+}
 .inspector-form {
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.7fr);
-  align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
 }
-.inspector-form.single-column {
-  grid-template-columns: minmax(0, 1fr);
+.inspector-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.inspector-column-title {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 12px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.inspector-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--faint) var(--surface);
+  scrollbar-gutter: stable;
+}
+.inspector-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .inspector-options,
-.inspector-details {
-  min-width: 0;
-}
-.inspector-options {
+.inspector-content {
   border-right: 1px solid var(--line);
 }
 .inspector-options .segmented {
@@ -1182,6 +1212,35 @@ label:has(> input[type='checkbox']) {
 }
 .inspector-prompt textarea {
   min-height: 150px;
+}
+@container (max-width: 720px) {
+  .inspector {
+    overflow: auto;
+  }
+  .inspector-form {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    height: auto;
+  }
+  .inspector-column {
+    overflow: visible;
+  }
+  .inspector-column-title {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .inspector-scroll {
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+  .inspector-options,
+  .inspector-content {
+    border-right: 0;
+  }
+  .inspector-content {
+    order: -1;
+  }
 }
 /* Panel samping */
 .side {
@@ -1222,12 +1281,9 @@ label:has(> input[type='checkbox']) {
 .side-tabs button:hover {
   background: var(--surface-2);
 }
-.inspector {
-  min-height: 0;
-  overflow: auto;
-  flex-grow: 1;
-}
 .inspector-empty {
+  height: 100%;
+  overflow: auto;
   padding: 48px 28px;
   text-align: center;
   color: var(--muted);
@@ -2192,11 +2248,30 @@ dialog::backdrop {
   }
   .inspector-form {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    height: auto;
   }
-  .inspector-options {
+  .inspector {
+    overflow: auto;
+  }
+  .inspector-column {
+    overflow: visible;
+  }
+  .inspector-column-title {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 12px;
+  }
+  .inspector-scroll {
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+  .inspector-options,
+  .inspector-content {
     border-right: 0;
   }
-  .inspector-details {
+  .inspector-content {
     order: -1;
   }
   .inspector .sec {

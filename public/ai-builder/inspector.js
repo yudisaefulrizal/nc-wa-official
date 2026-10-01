@@ -35,7 +35,11 @@ function segmented(label, choices, current, onpick, className = 'segmented') {
 }
 function renderInspector() {
   const host = $('inspector'),
-    n = state.document?.nodes.find(n => n.id === state.selected);
+    n = state.document?.nodes.find(n => n.id === state.selected),
+    sameNode = n && host.dataset.node === n.id,
+    scrollPositions = sameNode ? [...host.querySelectorAll('.inspector-scroll')].map(box => box.scrollTop) : [],
+    panelScroll = sameNode ? host.scrollTop : 0;
+  host.dataset.node = n?.id ?? '';
   $('node-panel-selection').hidden = !n;
   $('node-panel-selection').textContent = n?.label ?? '';
   host.replaceChildren();
@@ -98,6 +102,7 @@ function renderInspector() {
   const issues = state.issues.filter(i => i.node === n.id);
   if (issues.length) {
     const box = section();
+    box.classList.add('inspector-option');
     for (const issue of issues) {
       const row = el('div', undefined, 'issue');
       row.append(svgIcon('alert'), el('span', issue.message));
@@ -146,7 +151,6 @@ function renderInspector() {
       edit('model', 'Model khusus (opsional)'),
     );
     const contextMemory = section();
-    contextMemory.classList.add('inspector-option');
     const contextNodes = state.document.nodes.filter(m => m.type === 'context_memory');
     contextMemory.append(
       field(
@@ -170,7 +174,6 @@ function renderInspector() {
       ),
     );
     const memory = section();
-    memory.classList.add('inspector-option');
     memory.append(
       field(
         'Memori percakapan',
@@ -511,17 +514,31 @@ function renderInspector() {
     host.append(box);
   }
   host.append(connectionsSection(n));
-  // Pilihan ringkas di kiri, sehingga instruksi dan formulir mendapat ruang yang lebih lebar.
+  // Judul kolom tetap terlihat; masing-masing isi kolom punya area gulir sendiri.
   const form = el('div', undefined, 'inspector-form'),
-    options = el('div', undefined, 'inspector-options'),
-    details = el('div', undefined, 'inspector-details');
+    column = (title, className) => {
+      const box = el('section', undefined, 'inspector-column ' + className),
+        heading = el('h3', title, 'inspector-column-title'),
+        body = el('div', undefined, 'inspector-scroll');
+      body.tabIndex = 0;
+      body.setAttribute('role', 'region');
+      body.setAttribute('aria-label', 'Kolom ' + title);
+      box.append(heading, body);
+      form.append(box);
+      return body;
+    },
+    options = column('Umum', 'inspector-options'),
+    content = column(host.querySelector('.inspector-prompt') ? 'Instruksi' : 'Pengaturan node', 'inspector-content'),
+    details = column('Pengaturan lanjutan', 'inspector-details'),
+    primary =
+      host.querySelector('.inspector-prompt') ??
+      [...host.children].find(child => !child.classList.contains('inspector-option'));
   for (const child of [...host.children]) {
-    (child.classList.contains('inspector-option') ? options : details).append(child);
+    (child.classList.contains('inspector-option') ? options : child === primary ? content : details).append(child);
   }
-  if (options.childElementCount) form.append(options);
-  else form.classList.add('single-column');
-  form.append(details);
   host.append(form);
+  [options, content, details].forEach((box, index) => (box.scrollTop = scrollPositions[index] ?? 0));
+  host.scrollTop = panelScroll;
 }
 // Koneksi masuk sebagai ringkasan, koneksi keluar bisa diubah per port.
 function connectionsSection(n) {
