@@ -1,6 +1,17 @@
 // Asisten AI Editor profil: memakai tier Cerdas dengan jawaban panjang, membaca panduan skill dan draft, membalas
 // jawaban saja atau usulan definisi yang sudah diperiksa, memperbaiki sendiri bila bermasalah, dan tidak menyimpan.
-import { profileSkillFiles, tasksExample } from '../../../src/components/ai/domain/builder/skill.js';
+import {
+  profileSkillFiles,
+  tasksExample,
+  tasksGuideFile,
+  nodeGuideFile,
+  tasksExampleFile,
+} from '../../../src/components/ai/domain/builder/skill.js';
+import {
+  createAssistantGuides,
+  coreGuidePaths,
+  maxAssistantReferenceLoads,
+} from '../../../src/components/ai/domain/builder/assistant-guides.js';
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -19,6 +30,11 @@ import {
   runAssistant,
   type AssistantEvent,
 } from '../../../src/components/ai/domain/builder/assistant.js';
+import {
+  assistantPriorities,
+  qualityGuideFile,
+  qualityPolicyMarkdown,
+} from '../../../src/components/ai/domain/builder/quality-policy.js';
 
 const actor = randomUUID();
 after(async () => {
@@ -111,6 +127,11 @@ test('A change is checked and summarised; issues are sent back for repair; bad J
     ['drafting', 'repairing', 'checking', 'repairing', 'checking', 'done'],
   );
   assert.equal(calls.length, 3);
+  for (const [index, call] of calls.entries()) {
+    const priorities = assistantPriorities({ hasHistory: true, hasTaskRouting: false, repairing: index > 0 });
+    assert.ok(call.messages[0].content.endsWith(JSON.stringify(priorities)));
+    assert.ok(call.messages[0].content.includes('===== ' + qualityGuideFile + ' =====\n' + qualityPolicyMarkdown()));
+  }
   assert.match(calls[2].messages.at(-1)!.content, /Editor menemukan masalah[\s\S]*penutup/);
   assert.equal(result.reply, 'Menambah Penutup dan sambungannya.');
   assert.deepEqual(result.issues, []);
@@ -131,6 +152,38 @@ test('A change is checked and summarised; issues are sent back for repair; bad J
   }
   const added = result.definition!.nodes.find(n => n.id === 'penutup')!;
   assert.deepEqual([added.x, added.y], [undefined, undefined]);
+});
+
+test('Task drafts receive adaptive priorities and transient retries use recovery priorities', async () => {
+  const calls: AIMessage[][] = [];
+  const transport: AITransport = async (_config, messages) => {
+    calls.push([...messages]);
+    if (calls.length === 1) throw Error('timeout');
+    return JSON.stringify({ reply: 'Penjelasan alur tugas.', definition: null });
+  };
+  await runAssistant(
+    actor,
+    'g_uji',
+    { message: 'Jelaskan alur', definition: tasksExample() },
+    () => {},
+    new AbortController().signal,
+    transport,
+  );
+  assert.equal(calls.length, 2);
+  for (const [index, messages] of calls.entries()) {
+    assert.ok(
+      messages[0].content.endsWith(
+        JSON.stringify(
+          assistantPriorities({
+            hasHistory: false,
+            hasTaskRouting: true,
+            repairing: index > 0,
+            hasWriteTools: true,
+          }),
+        ),
+      ),
+    );
+  }
 });
 
 test('After the repair limit the last result is returned with its issues', async () => {
@@ -204,8 +257,15 @@ test('Assistant receives current skill files and repairs a task return cycle whi
   assert.equal(calls.length, 2);
   assert.match(calls[1].messages.at(-1)!.content, /Siklus tidak diizinkan/);
   const prompt = calls[0].messages[0].content;
-  for (const file of profileSkillFiles())
+  const initial = createAssistantGuides(
+    current,
+    'Tambahkan routing beberapa tugas serta gambar otomatis untuk WhatsApp dan Instagram',
+  );
+  for (const file of profileSkillFiles().filter(f => initial.paths().includes(f.path)))
     assert.ok(prompt.includes('===== ' + file.path + ' =====\n' + file.content), file.path);
+  assert.ok(prompt.includes('===== ' + tasksGuideFile + ' ====='));
+  assert.ok(!prompt.includes('===== examples/'));
+  assert.ok(calls[1].messages[0].content.includes('===== ' + nodeGuideFile('media') + ' ====='));
   assert.match(prompt, /jangan meminta ekspor\/impor JSON/);
   assert.match(prompt, /jangan menyatakan routing tugas atau penyesuaian gambar lintas kanal belum tersedia/);
   assert.match(prompt, /Jangan meminta pemilik membuat cabang WhatsApp\/Instagram/);
@@ -219,4 +279,127 @@ test('Assistant receives current skill files and repairs a task return cycle whi
     [media.type, media.caption, media.media_as, media.send_when],
     ['media', 'Brosur produk', 'image', 'after'],
   );
+});
+
+test('The assistant loads requested references without spending the graph repair budget', async () => {
+  const d = blankDefinition('Toko');
+  const { calls, result } = await run(
+    [
+      JSON.stringify({ references: [nodeGuideFile('compute')] }),
+      'not json',
+      JSON.stringify({ reply: 'Set / Hitung tersedia.', definition: null }),
+    ],
+    d,
+  );
+  assert.equal(calls.length, 3);
+  assert.ok(!calls[0].messages[0].content.includes('===== ' + nodeGuideFile('compute') + ' ====='));
+  assert.ok(calls[1].messages[0].content.includes('===== ' + nodeGuideFile('compute') + ' ====='));
+  assert.equal(result.reply, 'Set / Hitung tersedia.');
+});
+
+test('Unknown paths cannot read files and a corrected response still succeeds', async () => {
+  const { result, calls } = await run(
+    [
+      JSON.stringify({ references: ['../../.env'] }),
+      JSON.stringify({ reply: 'Perintah diperiksa.', definition: null }),
+    ],
+    blankDefinition(),
+  );
+  assert.equal(calls.length, 2);
+  assert.match(calls[1].messages.at(-1)!.content, /permintaan referensi tidak valid/);
+  assert.equal(result.definition, null);
+});
+
+test('Reference requests are bounded even if the model repeatedly asks for loaded content', async () => {
+  const answers = Array.from({ length: maxAssistantReferenceLoads + 3 }, () =>
+    JSON.stringify({ references: [nodeGuideFile('agent')] }),
+  );
+  const { transport, calls } = fake(answers);
+  await assert.rejects(
+    runAssistant(
+      actor,
+      'g_uji',
+      { message: 'Jelaskan', definition: blankDefinition() },
+      () => {},
+      new AbortController().signal,
+      transport,
+    ),
+    /ai_assistant_reference_limit/,
+  );
+  assert.equal(calls.length, maxAssistantReferenceLoads + 3);
+});
+
+test('A structurally valid proposal with a new capability is reviewed after its contract is loaded', async () => {
+  const current = blankDefinition();
+  const proposed = structuredClone(current);
+  proposed.nodes.push({
+    ...current.nodes[1],
+    id: 'hitung',
+    label: 'Hitung',
+    type: 'compute',
+    prompt: '',
+    steps: [{ name: 'hasil', op: 'add', args: ['1', '2'] }],
+  });
+  proposed.edges[0].target = 'hitung';
+  proposed.edges.push({ id: 'e_hitung', source: 'hitung', port: 'next', target: 'agent' });
+  const answer = JSON.stringify({ reply: 'Menambahkan perhitungan.', definition: proposed });
+  const { calls, result } = await run([answer, answer], current, 'Sesuaikan sesuai kebutuhan sebelumnya');
+  assert.equal(calls.length, 2);
+  assert.ok(calls[1].messages[0].content.includes('===== ' + nodeGuideFile('compute') + ' ====='));
+  assert.match(calls[1].messages.at(-1)!.content, /Tinjau kontraknya/);
+  assert.deepEqual(result.issues, []);
+});
+
+test('A simple request retains core rules while omitting unrelated contracts and examples', () => {
+  const guides = createAssistantGuides(blankDefinition(), 'Ubah nama profil');
+  for (const path of coreGuidePaths) assert.ok(guides.paths().includes(path), path);
+  assert.ok(!guides.paths().includes(tasksGuideFile));
+  assert.ok(!guides.paths().some(path => path.startsWith('examples/')));
+  assert.ok(!guides.paths().includes(nodeGuideFile('data_table')));
+  const allChars = profileSkillFiles().reduce((sum, f) => sum + f.content.length, 0);
+  assert.ok(guides.prompt().length < allChars * 0.75, 'At least 25% fewer prompt characters for a simple draft');
+  const before = guides.paths();
+  assert.throws(() => guides.load([nodeGuideFile('compute'), 'https://example.com/guide']), /unknown_reference/);
+  assert.deepEqual(guides.paths(), before);
+  assert.throws(() => extractAnswer('{"references":["SKILL.md"],"definition":null}'), /invalid_reference_request/);
+});
+
+test('Examples are opt-in and bring the contracts required by their actual graph', () => {
+  const guides = createAssistantGuides(blankDefinition(), 'Jelaskan alur');
+  assert.ok(!guides.paths().includes(tasksExampleFile));
+  guides.load([tasksExampleFile]);
+  for (const path of [
+    tasksExampleFile,
+    tasksGuideFile,
+    nodeGuideFile('router'),
+    nodeGuideFile('data_table'),
+    nodeGuideFile('context_memory'),
+  ])
+    assert.ok(guides.paths().includes(path), path);
+  const prompt = guides.prompt();
+  assert.ok(prompt.indexOf('===== ' + tasksExampleFile) > prompt.indexOf('===== ' + tasksGuideFile));
+  const fresh = createAssistantGuides(blankDefinition(), 'Jelaskan alur');
+  assert.ok(!fresh.paths().includes(tasksExampleFile), 'Loaded resources do not leak between requests');
+});
+
+test('Cancellation during a reference request prevents the next model call', async () => {
+  const abort = new AbortController();
+  let calls = 0;
+  const transport: AITransport = async () => {
+    calls++;
+    abort.abort();
+    return JSON.stringify({ references: [nodeGuideFile('compute')] });
+  };
+  await assert.rejects(
+    runAssistant(
+      actor,
+      'g_uji',
+      { message: 'Jelaskan', definition: blankDefinition() },
+      () => {},
+      abort.signal,
+      transport,
+    ),
+    { name: 'AbortError' },
+  );
+  assert.equal(calls, 1);
 });

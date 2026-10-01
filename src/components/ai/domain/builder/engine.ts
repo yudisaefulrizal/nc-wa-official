@@ -1,4 +1,5 @@
 // Menjalankan graf dengan port bertipe dan antrean tugas Router, batas panggilan, serta substitusi variabel tanpa eval.
+import { routerCriteria, type RouterTable } from './router-tables.js';
 import { summarizeSPO } from '../pipeline/context.js';
 import { createHash } from 'node:crypto';
 import { ApiError } from '../../../../libraries/errors.js';
@@ -146,8 +147,10 @@ export async function runGraph(
   maxWords = 300,
   resolveMedia: MediaResolver = databaseMedia(scope),
   writeFile: FileWriter = databaseFiles(scope),
+  routerRecords?: Pick<RecordAdapter, 'search'>,
 ) {
   const media: QueuedMedia[] = [];
+  const routerTables = new Map<string, RouterTable>();
   assertRunnable(d);
   const input = messages.filter(m => m.role === 'user').at(-1)?.content;
   if (!input) throw Error('ai_missing_input');
@@ -245,7 +248,10 @@ export async function runGraph(
       ? { ...n, filters: n.filters.map(f => ({ ...f, value: String(interpolate(f.value, state) ?? '') })) }
       : n;
     const result = await executeTool(configured, value, key);
-    if (mutating && !(result as { error?: unknown })?.error) mutations.set(key, result);
+    if (mutating && !(result as { error?: unknown })?.error) {
+      mutations.set(key, result);
+      routerTables.clear();
+    }
     return result;
   };
   for (const id of dataVariableCollections(d)) {
@@ -410,7 +416,42 @@ export async function runGraph(
         if (port !== 'done') {
           const selected = { ...tierConfig(config, n.tier), call_role: 'router', trace_node: n.id };
           selected.model = n.model || selected.model;
-          const criteria = Object.fromEntries(branches.map(b => [b.id, b.description || b.label]));
+          const { criteria, empty } = await routerCriteria(
+            branches,
+            d.collections,
+            routerRecords ?? databaseRecords(scope, d),
+            routerTables,
+            async () => {
+              guard();
+              await config.checkpoint?.();
+            },
+          );
+          for (const b of empty) {
+            config.onTrace?.({
+              node: n.id,
+              state: 'read',
+              output: { branch: b.id, collection: b.collection, count: 0, skipped: 'empty_table' },
+            });
+            if (taskRun)
+              taskRun.task.exclusions.push({
+                agent: d.edges.find(e => e.source === n.id && e.port === b.id)!.target,
+                reason: 'Tabel ' + b.collection + ' kosong untuk pelanggan ini.',
+              });
+          }
+          branches = branches.filter(b => Object.hasOwn(criteria, b.id));
+          if (!branches.length) {
+            if (!taskRun) throw Error('ai_router_no_candidates');
+            taskRun.task.status = 'unresolved';
+            config.onTrace?.({
+              node: n.id,
+              state: 'done',
+              output: { tasks: structuredClone(queue), reason: 'empty_tables' },
+            });
+            taskRun = undefined;
+            current = n;
+            continue;
+          }
+          guard();
           if (calls >= runtimeLimits.modelCalls) throw Error('ai_retry_limit');
           calls++;
           const raw = isJevModel(selected.model)

@@ -304,7 +304,51 @@ function renderInspector() {
       const item = el('div', undefined, 'branch');
       item.append(
         field('Label', b.label, v => mutate(() => (b.label = v))),
-        field('Kapan dipilih?', b.description, v => mutate(() => (b.description = v)), 'textarea'),
+        field(
+          'Sumber “Kapan dipilih?”',
+          b.source ?? 'manual',
+          v => {
+            mutate(() => {
+              b.source = v;
+            });
+            renderInspector();
+          },
+          'select',
+          [
+            { value: 'manual', label: 'Teks manual' },
+            { value: 'table', label: 'Isi tabel' },
+          ],
+        ),
+        ...(b.source === 'table'
+          ? [
+              field(
+                'Tabel untuk pemilihan Agent',
+                b.collection ?? '',
+                v => mutate(() => (b.collection = v)),
+                'select',
+                [
+                  { value: '', label: 'Pilih tabel…' },
+                  ...state.document.collections
+                    .filter(c => kindOf(c) === 'list')
+                    .map(c => ({ value: c.id, label: c.name })),
+                  ...(b.collection &&
+                  !state.document.collections.some(c => c.id === b.collection && kindOf(c) === 'list')
+                    ? [{ value: b.collection, label: 'Tabel tidak tersedia: ' + b.collection }]
+                    : []),
+                ],
+              ),
+              el(
+                'p',
+                'Seluruh baris dan field terbaru milik akun menjadi konteks Router. Data milik pelanggan dibatasi ke pengirim pesan. Agent tujuan harus memiliki tool Baca/Cari tabel ini; pencarian detail dilakukan oleh Agent.',
+                'hint',
+              ),
+              el(
+                'p',
+                'Tabel kosong tidak dipilih. Total konteks pilihan dibatasi 240.000 karakter; jika terlalu besar, routing dihentikan dengan pesan error tanpa memotong data. Simulasi memakai data contoh.',
+                'hint',
+              ),
+            ]
+          : [field('Kapan dipilih?', b.description, v => mutate(() => (b.description = v)), 'textarea')]),
         field('ID port', b.id, v =>
           mutate(() => {
             for (const e of state.document.edges.filter(e => e.source === n.id && e.port === b.id)) e.port = v;

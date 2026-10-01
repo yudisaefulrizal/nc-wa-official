@@ -811,7 +811,10 @@ function usedBy(c) {
   const tools = state.document.nodes.filter(n => isDataNode(n) && n.collection === c.id);
   const agents = state.document.nodes.filter(a => a.type === 'agent' && a.tools.some(t => tools.some(x => x.id === t)));
   const relations = state.document.collections.filter(x => x !== c && x.fields.some(f => f.collection === c.id));
-  return { tools, agents, relations };
+  const routers = state.document.nodes.filter(
+    n => n.type === 'router' && n.branches.some(b => b.source === 'table' && b.collection === c.id),
+  );
+  return { tools, agents, relations, routers };
 }
 function renderCollections() {
   if (!state.document) return;
@@ -833,7 +836,7 @@ function renderCollections() {
             (kindOf(c) === 'list' ? ' · ' + (c.owner === 'customer' ? 'milik pelanggan' : 'umum') : '') +
             (kindOf(c) === 'text' ? '' : ' · ' + c.fields.length + ' field') +
             ' · ' +
-            use.tools.length +
+            (use.tools.length + use.routers.length) +
             ' node',
         ),
       );
@@ -977,6 +980,7 @@ function renderCollections() {
     showSide('inspector');
     selectNode(id);
   };
+  for (const r of use.routers) used.append(pill('router', r.label + ' (pemilihan)', openNode(r.id)));
   for (const t of use.tools) used.append(pill(t.type, t.label, openNode(t.id)));
   for (const a of use.agents) used.append(pill('agent', a.label + ' (lewat tool)', openNode(a.id)));
   for (const x of use.relations)
@@ -986,7 +990,8 @@ function renderCollections() {
         renderCollections();
       }),
     );
-  if (!use.tools.length && !use.relations.length) used.append(el('span', '— belum dipakai node mana pun'));
+  if (!use.tools.length && !use.routers.length && !use.relations.length)
+    used.append(el('span', '— belum dipakai node mana pun'));
   card.append(used);
   if (kindOf(c) !== 'text') card.append(fieldsTable(c));
   card.append(samplesSection(c));
@@ -1173,7 +1178,10 @@ function renameCollection(c, name) {
     'koleksi',
   );
   if (next === c.id) return;
-  for (const n of state.document.nodes) if (n.collection === c.id) n.collection = next;
+  for (const n of state.document.nodes) {
+    if (n.collection === c.id) n.collection = next;
+    for (const b of n.branches) if (b.collection === c.id) b.collection = next;
+  }
   rewriteVariables(new RegExp('((?<![.\\w])data\\.)' + c.id + '(?![\\w])', 'g'), '$1' + next);
   for (const x of state.document.collections) for (const f of x.fields) if (f.collection === c.id) f.collection = next;
   c.id = next;
@@ -1358,6 +1366,12 @@ const traceErrors = {
   ai_fallback_disabled: 'Fallback tidak aktif.',
   ai_retry_limit: 'Batas waktu atau jumlah panggilan model terlampaui.',
   ai_tool_result_limit: 'Hasil node terlalu besar.',
+  ai_router_context_limit:
+    'Seluruh isi tabel Router melebihi batas 240.000 karakter. Kurangi cakupan tabel atau gunakan teks manual; data tidak dipotong.',
+  ai_router_table_incomplete:
+    'Isi tabel Router tidak lengkap atau pagination sumber data tidak valid. Periksa dukungan offset dan has_more API.',
+  ai_router_no_candidates:
+    'Semua tabel cabang Router kosong. Isi tabel atau tambahkan cabang teks manual untuk menangani pertanyaan.',
   ai_graph_step_limit: 'Alur melewati batas langkah.',
   ai_invalid_context: 'Ringkasan konteks tidak valid.',
   ai_graph_failed: 'Langkah gagal dijalankan.',

@@ -183,6 +183,13 @@ export const limits = {
   labelLength: 100,
   textLength: 8000,
 } as const;
+export interface RouterBranch {
+  id: string;
+  label: string;
+  description: string;
+  source?: 'manual' | 'table';
+  collection?: string;
+}
 export interface GraphNode {
   id: string;
   type: NodeType;
@@ -194,7 +201,7 @@ export interface GraphNode {
   tier: ModelTier;
   model: string;
   tools: string[];
-  branches: { id: string; label: string; description: string }[];
+  branches: RouterBranch[];
   collection: string;
   operation: ToolOperation;
   value: string;
@@ -348,7 +355,13 @@ export function parseDefinition(value: unknown): GraphDefinition {
     const n = record(v);
     const branches = list(n.branches ?? [], limits.branches).map(v => {
       const b = record(v);
-      return { id: id(b.id), label: text(b.label, 100), description: text(b.description, 1000) };
+      return {
+        id: id(b.id),
+        label: text(b.label, 100),
+        description: text(b.description ?? '', 1000),
+        ...(b.source !== undefined ? { source: choice(b.source, ['manual', 'table'] as const) } : {}),
+        ...(b.collection !== undefined ? { collection: b.collection === '' ? '' : id(b.collection) } : {}),
+      };
     });
     unique(branches.map(b => b.id));
     if (
@@ -614,6 +627,24 @@ export function validateGraph(d: GraphDefinition): GraphIssue[] {
       }
     }
     if (n.tier === 'decision' && n.type !== 'router') add('Tier Keputusan hanya untuk Router.', n.id);
+    for (const b of n.branches.filter(b => b.source === 'table')) {
+      if (n.type !== 'router') add('Sumber tabel cabang hanya untuk Router.', n.id);
+      const c = d.collections.find(c => c.id === b.collection);
+      if (!c || collectionKind(c) !== 'list') add('Pilih koleksi tabel untuk cabang ' + b.label + '.', n.id);
+      const target = nodes.get(d.edges.find(e => e.source === n.id && e.port === b.id)?.target ?? '');
+      if (target?.type !== 'agent') add('Cabang tabel ' + b.label + ' harus langsung menuju Agent.', n.id);
+      else if (
+        !target.tools.some(id => {
+          const tool = nodes.get(id);
+          return (
+            tool?.type === 'data_table' &&
+            tool.collection === b.collection &&
+            ['search', 'get'].includes(tool.operation)
+          );
+        })
+      )
+        add('Agent tujuan cabang ' + b.label + ' harus memiliki tool Baca/Cari dari tabel yang sama.', n.id);
+    }
     if (n.type === 'router' && n.branches.length < 2) add('Router membutuhkan minimal dua cabang.', n.id);
     if (n.context_format && n.type !== 'context') add('Format konteks hanya untuk node Context.', n.id);
     if (n.fallback && n.type !== 'agent') add('Port fallback hanya untuk Agent.', n.id);

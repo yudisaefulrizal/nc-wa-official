@@ -191,6 +191,7 @@ function remoteRecords(source: DataSource, scope: ToolContext): RecordAdapter {
     })),
     sort: s.sort ? { field: s.sort.field, direction: s.sort.direction } : null,
     limit: s.limit ?? 100,
+    ...(s.offset !== undefined ? { offset: s.offset } : {}),
   });
   return {
     search: async (c, s) => list(c, await call(c, 'search', query(s), JSON.stringify(query(s))), s.limit ?? 100),

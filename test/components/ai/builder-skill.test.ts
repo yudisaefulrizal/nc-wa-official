@@ -3,6 +3,7 @@
 // pemilik.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { posix } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { inflateRawSync, crc32 } from 'node:zlib';
 import request from 'supertest';
@@ -30,9 +31,27 @@ import {
   tasksExample,
   tasksExampleFile,
   tasksGuideFile,
+  routerTablesGuideFile,
+  routerTablesExampleFile,
+  singleAgentExampleFile,
+  singleAgentExample,
+  nodesGuideFile,
+  nodeGuideFile,
 } from '../../../src/components/ai/domain/builder/skill.js';
 import { runGraph } from '../../../src/components/ai/domain/builder/engine.js';
 import { defaults, type AIMessage } from '../../../src/components/ai/domain/provider.js';
+import { qualityGuideFile, qualityPolicyMarkdown } from '../../../src/components/ai/domain/builder/quality-policy.js';
+import {
+  workflowFiles,
+  structuralGuideFile,
+  capabilitiesGuideFile,
+  mediaGuideFile,
+  contextGuideFile,
+} from '../../../src/components/ai/domain/builder/skill-workflow.js';
+import {
+  dataDesignGuideFile,
+  dataDesignMarkdown,
+} from '../../../src/components/ai/domain/builder/skill-data-design.js';
 
 // Pembaca ZIP minimal lewat central directory, cukup untuk memeriksa hasil createZip.
 function unzip(zip: Buffer) {
@@ -69,6 +88,8 @@ test('Skill package has valid frontmatter, a complete reference, and a runnable 
   assert.match(frontmatter[1], /^[a-z0-9-]{1,64}$/);
   assert.ok(frontmatter[2].length <= 1024);
   const reference = files.get(skillName + '/reference/format.md')!;
+  const nodes = files.get(skillName + '/' + nodesGuideFile)!;
+  assert.ok(nodes);
   assert.doesNotMatch(reference + skill, /undefined|\[object Object\]/);
   for (const value of [
     ...nodeTypes,
@@ -87,15 +108,63 @@ test('Skill package has valid frontmatter, a complete reference, and a runnable 
       skillName + '/SKILL.md',
       skillName + '/' + spoExampleFile,
       skillName + '/' + tasksExampleFile,
+      skillName + '/' + routerTablesGuideFile,
+      skillName + '/' + routerTablesExampleFile,
       skillName + '/' + tasksGuideFile,
       skillName + '/reference/format.md',
+      skillName + '/' + nodesGuideFile,
+      ...nodeTypes.map(type => skillName + '/' + nodeGuideFile(type)),
+      ...workflowFiles().map(f => skillName + '/' + f.path),
+      ...[structuralGuideFile, capabilitiesGuideFile, mediaGuideFile, contextGuideFile].map(
+        path => skillName + '/' + path,
+      ),
+      skillName + '/' + qualityGuideFile,
+      skillName + '/' + dataDesignGuideFile,
+      skillName + '/' + singleAgentExampleFile,
     ].sort(),
   );
+  for (const [path, content] of files) {
+    if (!path.endsWith('.md')) continue;
+    for (const match of content.matchAll(/\]\(([^)]+)\)/g)) {
+      const target = match[1].split('#')[0];
+      if (!target || /^https?:/.test(target)) continue;
+      assert.ok(files.has(posix.normalize(posix.join(posix.dirname(path), target))), path + ' → ' + target);
+    }
+  }
   assert.ok(skill.includes('](' + spoExampleFile + ')'), 'SKILL.md menaut contoh S-P-O');
+  assert.ok(skill.includes('](' + nodesGuideFile + ')'));
+  assert.ok(reference.includes('](nodes.md)'));
+  // Setiap tipe harus punya satu kontrak lengkap dan tujuan indeks yang tersedia dalam ZIP.
+  for (const type of nodeTypes) {
+    const sections = files.get(skillName + '/' + nodeGuideFile(type))!.split('### ' + type + '\n');
+    assert.equal(sections.length, 2, type);
+    const contract = sections[1].split('\n### ')[0];
+    for (const field of [
+      'Kegunaan / proses',
+      'Input',
+      'Parameter',
+      'Output data',
+      'Port alur',
+      'Sambungan',
+      'Kosong / gagal / batasan',
+      'Contoh',
+    ])
+      assert.ok(contract.includes('**' + field + ':**'), type + ': ' + field);
+  }
+  assert.ok(skill.includes('](' + qualityGuideFile + ')'));
+  assert.equal(files.get(skillName + '/' + qualityGuideFile), qualityPolicyMarkdown());
+  assert.equal(files.get(skillName + '/' + dataDesignGuideFile), dataDesignMarkdown());
+  assert.ok(skill.includes('](' + dataDesignGuideFile + ')'));
+  assert.ok(reference.includes('](data-design.md)'));
+  assert.ok(skill.includes('](' + singleAgentExampleFile + ')'));
+  assertRunnable(parseDefinition(JSON.parse(files.get(skillName + '/' + singleAgentExampleFile)!)));
   assertRunnable(parseDefinition(JSON.parse(files.get(skillName + '/' + spoExampleFile)!)));
   assert.ok(skill.includes('](' + tasksGuideFile + ')'));
   assert.ok(skill.includes('](' + tasksExampleFile + ')'));
   assertRunnable(parseDefinition(JSON.parse(files.get(skillName + '/' + tasksExampleFile)!)));
+  assertRunnable(parseDefinition(JSON.parse(files.get(skillName + '/' + routerTablesExampleFile)!)));
+  assert.ok(skill.includes('](' + routerTablesGuideFile + ')'));
+  assert.match(files.get(skillName + '/' + routerTablesGuideFile)!, /Seluruh nilai field semua baris/);
   const tasksGuide = files.get(skillName + '/' + tasksGuideFile)!;
   for (const term of [
     'extract_mode',
@@ -113,6 +182,37 @@ test('Skill package has valid frontmatter, a complete reference, and a runnable 
     assert.ok(tasksGuide.includes(term), term);
   assert.match(reference, /input.task/);
   assert.doesNotMatch(skill, /Agent dan Context punya `prompt`|kosongkan `caption`|aplikasi tidak memisahkan caption/);
+});
+
+// Contoh minimum harus benar-benar menyelesaikan jalur dengan satu panggilan model.
+test('The single-agent example answers without router, extractor or synthesis calls', async () => {
+  const d = singleAgentExample();
+  assertRunnable(parseDefinition(d));
+  const calls: string[] = [];
+  const result = await runGraph(
+    d,
+    async config => {
+      calls.push(config.call_role!);
+      return JSON.stringify({ answer: 'Ringkasan dari teks pelanggan.' });
+    },
+    { ...defaults },
+    [{ role: 'user', content: 'Ringkas: rapat hari Senin membahas anggaran.' }],
+    {
+      account: randomUUID(),
+      profile: 'simulation',
+      session: 'test',
+      customer: '628001',
+      requestId: randomUUID(),
+      fallbackEnabled: false,
+    },
+    null,
+    async () => {
+      throw Error('Tidak perlu tool untuk teks yang sudah diberikan');
+    },
+    100,
+  );
+  assert.equal(result.answer, 'Ringkasan dari teks pelanggan.');
+  assert.deepEqual(calls, ['agent']);
 });
 
 // Contoh skill dijalankan dua giliran untuk setiap cabang: ringkasan S-P-O dari giliran pertama sampai ke Router di

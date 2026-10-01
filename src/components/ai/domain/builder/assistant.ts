@@ -11,7 +11,10 @@ import { transientAIError } from '../pipeline/retry.js';
 import { ai } from '../service.js';
 import * as auditSql from '../../data-access/audit-events-queries.js';
 import { parseDefinition, text, validateGraph, type GraphDefinition, type GraphIssue } from './definition.js';
-import { profileSkillFiles, tasksGuideFile, tasksExampleFile } from './skill.js';
+import { tasksGuideFile, routerTablesGuideFile, nodesGuideFile } from './skill.js';
+import { assistantPriorityPrompt } from './quality-policy.js';
+import { dataDesignGuideFile } from './skill-data-design.js';
+import { createAssistantGuides, maxAssistantReferenceLoads, maxReferencesPerLoad } from './assistant-guides.js';
 
 export const maxAssistantRepairs = 2;
 export type AssistantEvent =
@@ -37,30 +40,22 @@ export interface AssistantResult {
 const answerFormat = `## Cara membalas di Editor profil
 
 Anda bekerja di dalam Editor profil NC-WA. Pemilik melihat draft di kanvas dan akan menekan Terapkan atau Tolak untuk usulan Anda.
-Balas HANYA satu objek JSON, tanpa teks lain:
+Untuk hasil akhir, balas HANYA satu objek JSON, tanpa teks lain:
 {"reply": "penjelasan singkat dalam bahasa Indonesia", "definition": <definisi profil LENGKAP atau null>}
 - "definition" null bila pemilik hanya bertanya atau tidak ada yang perlu diubah.
 - Bila mengubah, kirim definisi lengkap (semua koleksi, node, dan edge), bukan potongan.
 - Pertahankan id dan nama node yang tidak diubah. Jangan menulis posisi x/y; editor yang menyusun tampilan.
-- Jangan mengubah hal yang tidak diminta.
+- Jangan mengubah hal yang tidak diminta. Gunakan kompleksitas minimum untuk tujuan klien; jelaskan manfaat penambahan Agent. Bila satu Agent memadai, jangan memaksakan Router, Ekstrak tugas, atau penggabung.
+- Saat membuat/mengubah koleksi atau akses tool, ikuti ${dataDesignGuideFile}: struktur data mengikuti kebutuhan percakapan. Putuskan tanggung jawab Agent dan batas tabel secara terpisah, lalu tentukan tool assignment. Jelaskan alasan utama gabung/pisah dan dampaknya pada data lama secara singkat; jangan mengklaim record sudah dimigrasikan hanya karena definisi berubah.
 - Draft sudah tersedia dalam pesan ini: jangan meminta ekspor/impor JSON. Aturan paket skill tentang impor berlaku untuk pemakaian di luar Editor; di sini selalu gunakan objek reply/definition di atas.
-- Kemampuan node/tool mengikuti reference/format.md dan ${tasksGuideFile} yang disertakan. Instruksi ini menggantikan asumsi dari riwayat yang lebih lama; jangan menyatakan routing tugas atau penyesuaian gambar lintas kanal belum tersedia.
-- Untuk beberapa tugas, gunakan mode pada Ekstrak/Router serta Agent biasa untuk pekerja/penggabung; ikuti ${tasksExampleFile}. Jangan membuat jenis node baru, edge siklus, atau port pengembalian. Pertahankan mode lama bila pemilik tidak memintanya diubah.
+- Kemampuan node/tool mengikuti reference/format.md, ${nodesGuideFile}, dan ${tasksGuideFile} dari katalog panduan. Minta referensi yang belum dimuat bila diperlukan. Periksa input/output, jenis sambungan, port, serta perilaku kosong/gagal sebelum menghubungkan node. Instruksi ini menggantikan asumsi dari riwayat yang lebih lama; jangan menyatakan routing tugas atau penyesuaian gambar lintas kanal belum tersedia.
+- Untuk beberapa tugas yang memerlukan pemisahan capability, gunakan mode pada Ekstrak/Router serta Agent biasa untuk pekerja/penggabung; baca ${tasksGuideFile}, gunakan contoh opsional hanya untuk memeriksa representasi. Jangan membuat jenis node baru, edge siklus, atau port pengembalian. Pertahankan mode lama bila pemilik tidak memintanya diubah.
+- Untuk “Kapan dipilih?” dari tabel, ikuti ${routerTablesGuideFile}: branches[].source="table" dan collection berisi ID koleksi. Seluruh isi tabel dimuat sebagai kriteria Router; jangan menggantinya dengan nama field, ringkasan, atau pencarian awal. Agent tujuan harus mempunyai tool search/get tabel yang sama. Cabang Sapaan/Penutup tetap manual.
 - Pengiriman media otomatis mengikuti sesi tujuan. Jangan meminta pemilik membuat cabang WhatsApp/Instagram untuk mengirim gambar yang sama; jelaskan caption terpisah dan batas konektor resmi bila relevan.
 - Perubahan panduan bukan bukti model/pengiriman nyata sudah diuji. Jangan mengklaim pengujian yang tidak dilakukan.
 - "reply" menjelaskan apa yang diubah dan alasannya, maksimal beberapa kalimat.`;
-// Panduan skill + format balasan; sama untuk setiap permintaan.
-function systemPrompt() {
-  return (
-    profileSkillFiles()
-      .map(f => '===== ' + f.path + ' =====\n' + f.content)
-      .join('\n\n') +
-    '\n\n' +
-    answerFormat
-  );
-}
 // JSON dari jawaban model: blok ```json atau objek terluar; teks di sekitarnya dibuang.
-export function extractAnswer(raw: string): { reply: string; definition: unknown } {
+export function extractAnswer(raw: string): { reply: string; definition: unknown; references?: string[] } {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(raw)?.[1];
   const source = fenced ?? raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
   let value: unknown;
@@ -70,7 +65,19 @@ export function extractAnswer(raw: string): { reply: string; definition: unknown
     throw Error('ai_assistant_invalid_json');
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('ai_assistant_invalid_json');
-  const v = value as { reply?: unknown; definition?: unknown };
+  const v = value as { reply?: unknown; definition?: unknown; references?: unknown };
+  if (Object.hasOwn(v, 'references')) {
+    if (
+      Object.hasOwn(v, 'reply') ||
+      Object.hasOwn(v, 'definition') ||
+      !Array.isArray(v.references) ||
+      !v.references.length ||
+      v.references.length > maxReferencesPerLoad ||
+      v.references.some(p => typeof p !== 'string')
+    )
+      throw Error('ai_assistant_invalid_reference_request');
+    return { reply: '', definition: null, references: [...new Set(v.references as string[])] };
+  }
   return {
     reply: typeof v.reply === 'string' ? v.reply.trim().slice(0, 4000) : '',
     definition: v.definition ?? null,
@@ -156,8 +163,10 @@ export async function runAssistant(
     max_tokens: 16000,
     timeout_ms: 180000,
   };
+  const guides = createAssistantGuides(current, message);
+  let referenceLoads = 0;
   const messages: AIMessage[] = [
-    { role: 'system', content: systemPrompt() },
+    { role: 'system', content: guides.prompt() + '\n\n' + answerFormat },
     ...history,
     {
       role: 'user',
@@ -169,9 +178,27 @@ export async function runAssistant(
     },
   ];
   await auditSql.insert(db, [actor, 'graph_assistant:' + profile]);
-  const ask = async () => {
+  const ask = async (repairing: boolean) => {
     for (let attempt = 1; ; attempt++) {
       signal.throwIfAborted();
+      messages[0] = {
+        role: 'system',
+        content:
+          guides.prompt() +
+          '\n\n' +
+          answerFormat +
+          '\n\n' +
+          assistantPriorityPrompt({
+            hasHistory: history.length > 0,
+            hasTaskRouting: current.nodes.some(n => n.type === 'router' && n.routing_mode === 'tasks'),
+            repairing: repairing || attempt > 1,
+            hasWriteTools: current.nodes.some(
+              n =>
+                (n.type === 'data_table' || n.type === 'data_form') &&
+                ['create', 'update', 'delete'].includes(n.operation ?? ''),
+            ),
+          }),
+      };
       try {
         return await transport(config, messages, 4000);
       } catch (e) {
@@ -181,18 +208,32 @@ export async function runAssistant(
     }
   };
   emit({ step: 'drafting' });
-  for (let repair = 0; ; repair++) {
-    const raw = await ask();
+  let repair = 0;
+  for (;;) {
+    const raw = await ask(repair > 0);
     messages.push({ role: 'assistant', content: raw });
     let answer: ReturnType<typeof extractAnswer>;
     try {
       answer = extractAnswer(raw);
+      if (answer.references) {
+        if (referenceLoads >= maxAssistantReferenceLoads) throw Error('ai_assistant_reference_limit');
+        guides.load(answer.references);
+        referenceLoads++;
+        if (referenceLoads >= maxAssistantReferenceLoads) guides.loadAllReferences();
+        messages.push({
+          role: 'user',
+          content: 'Referensi yang diminta sudah dimuat di system prompt. Lanjutkan sesuai permintaan pemilik.',
+        });
+        continue;
+      }
     } catch (e) {
       if (repair >= maxAssistantRepairs) throw e;
       emit({ step: 'repairing', attempt: repair + 1 });
+      repair++;
       messages.push({
         role: 'user',
-        content: 'Balasan bukan JSON yang valid. Balas ulang hanya dengan satu objek JSON.',
+        content:
+          'Balasan atau permintaan referensi tidak valid. Gunakan satu objek reply/definition atau references berisi path persis dari katalog yang belum dimuat; jangan campur keduanya. Batas pemuatan tetap berlaku.',
       });
       continue;
     }
@@ -203,14 +244,28 @@ export async function runAssistant(
     }
     emit({ step: 'checking' });
     const checked = check(answer.definition);
+    const addedGuides = checked.definition ? guides.addDefinition(checked.definition) : guides.loadAllReferences();
     if (checked.issues.length && repair < maxAssistantRepairs) {
       emit({ step: 'repairing', attempt: repair + 1, issues: checked.issues });
+      repair++;
       messages.push({
         role: 'user',
         content:
           'Editor menemukan masalah pada definisi itu:\n' +
           checked.issues.map(i => '- ' + (i.node ? i.node + ': ' : '') + i.message).join('\n') +
           '\nPerbaiki dan balas ulang dengan JSON lengkap.',
+      });
+      continue;
+    }
+    if (addedGuides && !checked.issues.length) {
+      // Kontrak fitur baru wajib diperiksa sebelum usulan valid secara struktur diserahkan.
+      // Setelah batas pemuatan, perluas semua referensi sekali; tidak menambah contoh otomatis.
+      referenceLoads++;
+      if (referenceLoads >= maxAssistantReferenceLoads) guides.loadAllReferences();
+      messages.push({
+        role: 'user',
+        content:
+          'Usulan menambah kemampuan dengan referensi yang baru dimuat di system prompt. Tinjau kontraknya, validasi semantik/CX, dan balas kembali JSON lengkap. Jangan menyatakan review ini sebagai pengujian model/kanal nyata.',
       });
       continue;
     }

@@ -181,6 +181,7 @@ export async function simulate(
     300,
     previewMedia,
     previewFiles,
+    memoryRecords(records),
   );
   emit({
     node: 'output',
@@ -206,7 +207,7 @@ function memoryRecords(records: Record<string, StoredRecord[]>): RecordAdapter {
     });
   return {
     search: async (c, s) => {
-      const rows = query(c, s);
+      const rows = query(c, s).slice(s.offset ?? 0);
       return { records: rows.slice(0, s.limit ?? 100), has_more: rows.length > (s.limit ?? 100) };
     },
     count: async (c, s, sum) => {
