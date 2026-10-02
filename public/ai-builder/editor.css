@@ -2702,3 +2702,50 @@ dialog::backdrop {
 .trace-copy {
   margin: 8px 12px;
 }
+
+/* Peran profil: dua kartu pilihan di tab Pengaturan. */
+.role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.role-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.role-card span,
+.role-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.role-card[aria-pressed='true'] {
+  background: var(--media-soft);
+  border: 2px solid var(--media);
+  padding: 13px 15px;
+}
+.role-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Uji profil Konten: isian formulir menggantikan kotak pesan. */
+.test-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.test-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}

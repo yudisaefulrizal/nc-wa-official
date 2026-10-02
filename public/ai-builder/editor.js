@@ -30,6 +30,12 @@ const kinds = {
   compute: ['Set / Hitung', 'Olah nilai dengan aturan pasti, tanpa AI', 'logic', 'hitung set rumus angka tanggal'],
   media: ['Kirim media', 'Gambar atau dokumen ke pelanggan', 'media', 'gambar dokumen kirim foto brosur file'],
   receive: ['Terima media', 'Simpan lampiran dari pelanggan', 'media', 'lampiran bukti upload terima gambar file'],
+  image_gen: [
+    'Buat gambar',
+    'Buat gambar dari prompt, memakai kredit AI',
+    'media',
+    'gambar buat generate poster foto desain ai',
+  ],
   file_json: [
     'Buat file JSON',
     'Susun file .json dari variabel, tanpa AI',
@@ -49,10 +55,16 @@ const paletteGroups = [
   ['Logika', ['condition', 'compute']],
   ['Data', ['data_table', 'data_text', 'data_form']],
   ['Memori', ['context_memory', 'memory']],
-  ['Media', ['media', 'receive']],
+  ['Media', ['media', 'receive', 'image_gen']],
   ['File', ['file_md', 'file_json']],
   ['Alur', ['input', 'output', 'fallback']],
 ];
+// Node yang tersedia di profil Konten; sama dengan contentNodeTypes di definition.ts.
+const contentNodeTypes = ['input', 'output', 'agent', 'router', 'condition', 'extract', 'compute', 'image_gen'];
+// Kunci input yang selalu ada; sama dengan reservedInputKeys di definition.ts.
+const reservedInputKeys = ['message', 'context', 'history', 'task'];
+const isContent = () => state.document?.role === 'content';
+const formFieldLabels = { text: 'Teks', textarea: 'Teks panjang', choice: 'Pilihan', image: 'Gambar referensi' };
 // Warna ikon node; Fallback memakai warna peringatan agar jalurnya ke manusia mudah dikenali.
 const nodeColor = type => (type === 'fallback' ? 'logic' : type === 'context_memory' ? 'ctx' : kinds[type][2]);
 // Node yang bisa membaca Shared Memory; sama dengan memoryConsumers di definition.ts.
@@ -120,6 +132,8 @@ const icons = {
   media: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
   receive: '<path d="M3 13h5l1.5 3h5l1.5-3h5"/><path d="M5 5h14l2 8v6H3v-6z"/>',
 };
+icons.image_gen =
+  '<path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6"/><circle cx="9" cy="10" r="1.5"/><path d="M20 17l-5-5-8 8"/><path d="M18 2v5M15.5 4.5h5"/>';
 icons.file_json =
   '<path d="M6 3h9l3 3v15H6z"/><path d="M11 10c-1.5 0-1.5 1-1.5 2s0 1.5-1 2c1 .5 1 1 1 2s0 2 1.5 2M13 10c1.5 0 1.5 1 1.5 2s0 1.5 1 2c-1 .5-1 1-1 2s0 2-1.5 2"/>';
 icons.file_md = '<path d="M6 3h9l3 3v15H6z"/><path d="M10 9l-1 6M13 9l-1 6M8.5 11h5M8 13.5h5M9 18h6"/>';
@@ -173,6 +187,8 @@ const illustrations = {
     '<rect x="4" y="4" width="56" height="56" rx="16" fill="#E6F6F2"/><path d="M14 18h36v30H14z" fill="#fff" stroke="#1F7A6D" stroke-width="2.2" stroke-linejoin="round" transform="rotate(-4 32 33)"/><path d="M20 30h24M20 37h16" stroke="#7CC5B8" stroke-width="2.4" stroke-linecap="round"/><circle cx="32" cy="16" r="5.5" fill="#E0655A"/><circle cx="30.5" cy="14.5" r="1.8" fill="#F3A49C"/>',
   media:
     '<rect x="4" y="4" width="56" height="56" rx="16" fill="#FBEFF5"/><rect x="10" y="16" width="26" height="22" rx="3" fill="#fff" stroke="#B0467F" stroke-width="2" transform="rotate(-8 23 27)"/><circle cx="18" cy="23" r="2.6" fill="#F2B9D3"/><path d="M13 35l7-6 5 4 7-6" stroke="#E2A9C6" stroke-width="2" fill="none" transform="rotate(-8 23 27)"/><path d="M24 22h14l6 6v20H24z" fill="#fff" stroke="#B0467F" stroke-width="2" stroke-linejoin="round"/><path d="M38 22v6h6" fill="#F6D9E7" stroke="#B0467F" stroke-width="2"/><rect x="27" y="34" width="12" height="6" rx="1.5" fill="#B0467F"/><path d="M29 37h8" stroke="#fff" stroke-width="1.6"/><path d="M40 46l16-8-5 16-4-5z" fill="#B0467F" stroke="#8C2F62" stroke-width="1.4" stroke-linejoin="round"/><path d="M47 49l9-11" stroke="#fff" stroke-width="1.4"/>',
+  image_gen:
+    '<rect x="4" y="4" width="56" height="56" rx="16" fill="#FBEFF5"/><rect x="10" y="20" width="34" height="28" rx="4" fill="#fff" stroke="#B0467F" stroke-width="2.2"/><circle cx="20" cy="29" r="3.2" fill="#F2B9D3"/><path d="M12 44l10-9 7 6 6-5 6 6" stroke="#E2A9C6" stroke-width="2.2" fill="none" stroke-linejoin="round"/><path d="M47 8l2.4 6.6L56 17l-6.6 2.4L47 26l-2.4-6.6L38 17l6.6-2.4z" fill="#B0467F"/>',
   file_json:
     '<rect x="4" y="4" width="56" height="56" rx="16" fill="#FFF4E0"/><path d="M17 10h21l10 10v34H17z" fill="#fff" stroke="#B7791F" stroke-width="2.2" stroke-linejoin="round"/><path d="M38 10v10h10" fill="#FBE3B8" stroke="#B7791F" stroke-width="2.2" stroke-linejoin="round"/><path d="M28 27c-3 0-3 2-3 4.5s0 3.5-2.5 4.5c2.5 1 2.5 2 2.5 4.5s0 4.5 3 4.5" stroke="#B7791F" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M38 27c3 0 3 2 3 4.5s0 3.5 2.5 4.5c-2.5 1-2.5 2-2.5 4.5s0 4.5-3 4.5" stroke="#B7791F" stroke-width="2.4" fill="none" stroke-linecap="round"/><circle cx="33" cy="36" r="1.8" fill="#E0A94A"/>',
   file_md:
@@ -287,11 +303,15 @@ function mutate(fn) {
   fn();
   changed();
   renderCanvas();
+  // Formulir Uji profil Konten mengikuti isian formulir yang sedang diedit.
+  if (isContent()) renderTestFields();
 }
 const unpublished = () => !state.active || canonical(state.document) !== canonical(state.active);
 function renderStatus() {
   if (!state.document) return;
   $('profile-title').textContent = state.document.name;
+  $('role-chip').hidden = !isContent();
+  $('role-chip').textContent = 'Konten';
   $('revision').textContent = state.published ? 'Terbit v' + state.published : 'Belum diterbitkan';
   $('revision').className = 'chip' + (state.published ? ' ok' : '');
   $('unpublished').hidden = !state.published || !unpublished();
@@ -325,6 +345,7 @@ function nodePorts(n) {
   if (n.type === 'condition') return ['yes', 'no'];
   if (n.type === 'data_table' && ['search', 'get'].includes(n.operation)) return ['found', 'empty'];
   if (n.type === 'receive') return ['received', 'none'];
+  if (n.type === 'image_gen') return ['created', 'failed'];
   return ['next'];
 }
 const portLabels = {
@@ -337,6 +358,8 @@ const portLabels = {
   done: 'Selesai',
   received: 'Diterima',
   none: 'Tidak ada',
+  created: 'Berhasil',
+  failed: 'Gagal',
 };
 const portLabel = (n, port) => n.branches.find(b => b.id === port)?.label || portLabels[port] || port;
 const nodeLabel = id => state.document?.nodes.find(n => n.id === id)?.label ?? id;
@@ -448,6 +471,9 @@ function newNode(type, x = 120, y = 140, nodes = state.document?.nodes ?? []) {
     ...(type === 'compute' ? { steps: [{ name: 'hasil', op: 'value', args: ['{{input.message}}'] }] } : {}),
     ...(type === 'media' ? { value: '', caption: '', send_when: 'before', media_as: 'auto' } : {}),
     ...(type === 'receive' ? { accept: ['image', 'document'] } : {}),
+    ...(type === 'image_gen'
+      ? { value: '', image_ratio: '1:1', image_count: 1, image_brand: true, image_refs: '' }
+      : {}),
     ...(type === 'file_md' ? { value: '# Judul\n\n{{input.message}}', filename: '' } : {}),
     ...(type === 'file_json' ? { value: '{\n  "pesan": "{{input.message}}"\n}', filename: '' } : {}),
   };
@@ -484,6 +510,7 @@ function applyProfile(p) {
   renderInspector();
   renderCollections();
   renderIssues();
+  renderTestFields();
 }
 async function openProfile(id, skipConfirm = false) {
   if (!skipConfirm && state.dirty && !confirm('Draft belum tersimpan. Tinggalkan perubahan?')) return;
@@ -618,6 +645,7 @@ function renderAll() {
   renderCanvas();
   renderInspector();
   renderCollections();
+  renderTestFields();
   for (const [id, key] of [
     ['profile-name', 'name'],
     ['profile-description', 'description'],
@@ -677,6 +705,7 @@ $('create').onclick = () =>
       ],
     });
   }, $('create'));
+$('create-content').onclick = () => task(async () => create(await api(base + '/blank/content')), $('create-content'));
 $('all-profiles').onclick = () =>
   task(async () => {
     if (state.dirty) await flushSave().catch(() => {});
@@ -1242,7 +1271,91 @@ $('add-collection').onclick = () => {
 };
 
 // Pengaturan: status di klien dan riwayat versi dimuat setiap tab dibuka.
+const roles = [
+  [
+    'chat',
+    'Asisten chat',
+    'Membalas pelanggan di WhatsApp dan Instagram.',
+    'Input: pesan pelanggan · Output: jawaban dan media',
+  ],
+  [
+    'content',
+    'Konten',
+    'Dipakai klien sendiri di menu Konten.',
+    'Input: formulir yang Anda susun · Output: gambar dan teks di pustaka',
+  ],
+];
+function renderRole() {
+  if (!state.document) return;
+  const locked = Boolean(state.published);
+  $('role-box').replaceChildren(
+    ...roles.map(([id, title, text, io]) => {
+      const card = el('button', undefined, 'role-card');
+      card.type = 'button';
+      card.setAttribute('aria-pressed', String(state.document.role === id));
+      card.disabled = locked && state.document.role !== id;
+      card.append(el('strong', title), el('span', text), el('small', io));
+      card.onclick = () => setRole(id);
+      return card;
+    }),
+  );
+  $('role-note').textContent = locked
+    ? 'Peran terkunci setelah profil diterbitkan. Buat profil baru untuk peran lain.'
+    : 'Mengganti peran mengubah node Input dan Output; node yang tidak tersedia ditandai di Pemeriksaan sebelum terbit.';
+}
+// Peran hanya bisa diganti selagi belum terbit. Input dan Output disesuaikan; node lain yang tidak tersedia di peran baru
+// dibiarkan dan ditandai pemeriksaan, supaya tidak ada yang terhapus diam-diam.
+function setRole(role) {
+  const d = state.document;
+  if (state.published || d.role === role) return;
+  mutate(() => {
+    d.role = role;
+    for (const n of d.nodes) {
+      if (n.type === 'input')
+        if (role === 'content')
+          n.form ??= [{ id: 'brief', label: 'Brief', type: 'textarea', required: true, options: [] }];
+        else delete n.form;
+      if (n.type === 'output')
+        if (role === 'content') n.results ??= [{ label: 'Hasil', kind: 'text', value: n.value || '' }];
+        else delete n.results;
+    }
+  });
+  renderRole();
+  renderStatus();
+  renderCanvas();
+  renderInspector();
+  renderTestFields();
+}
+const testValues = () =>
+  Object.fromEntries([...$('test-fields').querySelectorAll('[name]')].map(control => [control.name, control.value]));
+// Profil Konten: Uji memakai formulir profil, bukan kotak pesan pelanggan.
+function renderTestFields() {
+  const content = isContent();
+  $('test-fields').hidden = !content;
+  $('test-message').hidden = content;
+  $('test-message').required = !content;
+  $('attachment-toggle').hidden = content;
+  $('attachment-box').hidden = true;
+  if (!content) return $('test-fields').replaceChildren();
+  const previous = testValues();
+  const form = state.document.nodes.find(n => n.type === 'input')?.form ?? [];
+  $('test-fields').replaceChildren(
+    ...form.map(f => {
+      const label = el('label', f.label + (f.required ? ' *' : ''));
+      const control = el(f.type === 'textarea' ? 'textarea' : f.type === 'choice' ? 'select' : 'input');
+      control.name = f.id;
+      control.required = f.required;
+      if (f.type === 'textarea') control.rows = 2;
+      if (f.type === 'choice') control.append(new Option('Pilih…', ''), ...f.options.map(v => new Option(v, v)));
+      if (f.type === 'image') control.placeholder = 'nama-gambar.jpg (simulasi)';
+      control.value = previous[f.id] ?? '';
+      label.append(control);
+      return label;
+    }),
+  );
+}
 async function loadSettings() {
+  renderRole();
   const id = state.id;
   if (!id) return;
   const [versions, profiles] = await Promise.all([
@@ -1258,8 +1371,8 @@ async function loadSettings() {
     };
   $('client-status').replaceChildren(
     stat('Status', info?.enabled ? 'Aktif' : state.published ? 'Nonaktif' : 'Belum terbit', info?.enabled),
-    stat('Data profil', info?.data_profiles ?? 0),
-    stat('Sesi', info?.sessions ?? 0),
+    // Profil Konten dipakai klien langsung di menu Konten, tanpa data profil atau sesi.
+    ...(isContent() ? [] : [stat('Data profil', info?.data_profiles ?? 0), stat('Sesi', info?.sessions ?? 0)]),
   );
   const inUse = Number(info?.data_profiles ?? 0) > 0;
   $('delete-profile').disabled = inUse;
@@ -1695,7 +1808,15 @@ function applyTraceToCanvas(turn) {
 }
 async function runTest() {
   if (state.controller) return;
-  const message = $('test-message').value.trim();
+  // Profil Konten mengirim isian formulir; pesan yang tampil di percakapan adalah ringkasannya.
+  const values = isContent() ? testValues() : null;
+  const form = state.document.nodes.find(n => n.type === 'input')?.form ?? [];
+  const message = values
+    ? form
+        .filter(f => values[f.id])
+        .map(f => f.label + ': ' + values[f.id])
+        .join('\n')
+    : $('test-message').value.trim();
   if (!message) return;
   const records = JSON.parse($('samples').value || '{}');
   const mediaName = $('attachment-box').hidden ? '' : $('test-media-name').value.trim();
@@ -1736,7 +1857,7 @@ async function runTest() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         definition: state.document,
-        message,
+        ...(values ? { values } : { message }),
         history: state.history,
         records,
         context: state.context,
@@ -1769,21 +1890,34 @@ async function runTest() {
       if (event.state === 'completed' && event.output?.records) {
         const result = event.output;
         turn.finished = Date.now();
-        turn.answer = result.answer || '[Diteruskan ke manusia]';
+        turn.answer = result.answer || (result.results ? '[Hasil Konten]' : '[Diteruskan ke manusia]');
         turn.context = result.context ?? null;
         state.context = result.context;
         state.history.push(
           { role: 'user', content: message },
-          { role: 'assistant', content: result.answer || '[Diteruskan ke manusia]' },
+          {
+            role: 'assistant',
+            content: result.answer || (result.results ? '[Hasil Konten]' : '[Diteruskan ke manusia]'),
+          },
         );
         state.history = state.history.slice(-60);
         // Simulasi tidak mengirim WhatsApp; media dari node Kirim media hanya ditampilkan namanya.
         const media = result.media ?? [];
-        pending.replaceWith(
-          ...media.filter(m => m.when === 'before').map(mediaBubble),
-          el('div', result.answer || 'Percakapan diteruskan ke manusia.', 'bubble assistant'),
-          ...media.filter(m => m.when === 'after').map(mediaBubble),
-        );
+        // Profil Konten: hasilnya daftar gambar dan teks; gambar hanya ditampilkan namanya pada simulasi.
+        if (result.results)
+          pending.replaceWith(
+            ...result.results.map(r =>
+              r.kind === 'image'
+                ? el('div', r.label + ': ' + r.value.join(', '), 'bubble assistant media')
+                : el('div', r.label + ': ' + r.value, 'bubble assistant'),
+            ),
+          );
+        else
+          pending.replaceWith(
+            ...media.filter(m => m.when === 'before').map(mediaBubble),
+            el('div', result.answer || 'Percakapan diteruskan ke manusia.', 'bubble assistant'),
+            ...media.filter(m => m.when === 'after').map(mediaBubble),
+          );
         $('samples').value = JSON.stringify(result.records, null, 2);
       } else if (event.node === 'execution' && event.state === 'error') {
         turn.error = event.error;

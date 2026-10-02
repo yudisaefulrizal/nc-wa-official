@@ -74,12 +74,44 @@ export function finishTrial(c: Executor, params: SqlValue[]) {
   );
 }
 
-export function insertImage(c: Executor, params: SqlValue[]) {
+// Pekerjaan profil Konten: kata dipesan saat masuk antrean (status 'generating' supaya pemulihan saat start
+// mengembalikannya), dan customer berisi ID pekerjaan agar kredit gambar node Buat gambar bisa dijumlahkan per pekerjaan.
+export function insertContent(c: Executor, params: SqlValue[]) {
   return c.execute(
-    "INSERT INTO ai_usage(account_id,request_id,session_id,customer,status,input_rate,output_rate,model,agent) VALUES (?,?,'content','image','image_queued',0,0,?,'image')",
+    "INSERT INTO ai_usage(account_id,request_id,session_id,customer,status,input_words,input_rate,output_rate,reserved,model,profile_type,agent,reserved_plan) VALUES (?,?,'content',?,'generating',?,?,?,?,?,?,'content',?)",
     params,
   );
 }
-export function finishImage(c: Executor, params: SqlValue[]) {
-  return c.execute('UPDATE ai_usage SET status=?,charged=?,model_calls=? WHERE account_id=? AND request_id=?', params);
+export function findContent(c: Executor, params: SqlValue[]) {
+  return c.execute<RowDataPacket[]>(
+    'SELECT reserved,reserved_plan FROM ai_usage WHERE account_id=? AND request_id=? FOR UPDATE',
+    params,
+  );
+}
+export function finishContent(c: Executor, params: SqlValue[]) {
+  return c.execute(
+    'UPDATE ai_usage SET status=?,output_words=?,charged=?,model_calls=?,reserved=0 WHERE account_id=? AND request_id=?',
+    params,
+  );
+}
+// Total kredit (kata dan gambar) per pekerjaan.
+export function sumContent(c: Executor, account: string, jobs: string[]) {
+  return c.query<RowDataPacket[]>(
+    "SELECT customer AS job,SUM(charged) AS charged FROM ai_usage WHERE account_id=? AND session_id='content' AND customer IN (?) GROUP BY customer",
+    [account, jobs],
+  );
+}
+// Reservasi gambar dari node Buat gambar. Status 'generating' membuat pemulihan saat start (runtime.recover)
+// mengembalikan kredit bila server berhenti sebelum gambar selesai.
+export function insertNodeImage(c: Executor, params: SqlValue[]) {
+  return c.execute(
+    "INSERT INTO ai_usage(account_id,request_id,session_id,customer,status,input_rate,output_rate,reserved,model,agent,reserved_plan) VALUES (?,?,?,?,'generating',0,0,?,?,'image',?)",
+    params,
+  );
+}
+export function finishNodeImage(c: Executor, params: SqlValue[]) {
+  return c.execute(
+    'UPDATE ai_usage SET status=?,charged=?,model_calls=?,reserved=0 WHERE account_id=? AND request_id=?',
+    params,
+  );
 }

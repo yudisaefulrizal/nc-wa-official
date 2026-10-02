@@ -73,10 +73,13 @@ const nodeDocs: Record<NodeType, NodeDoc> = {
     example: 'Input —next→ Agent —next→ Output; Agent membaca {{input.message}}.',
     name: 'Input',
     purpose: 'Titik awal alur: pesan pelanggan masuk di sini. Wajib tepat satu.',
-    keys: 'Tidak ada kunci khusus.',
+    keys:
+      'Profil chat: tidak ada kunci khusus. Profil Konten: `form`, daftar isian `{id, label, type, required, options}` dengan `type` `text`/`textarea`/`choice`/`image` (maksimal ' +
+      limits.formFields +
+      '); `image` berisi ID file Pustaka konten klien, `options` wajib untuk `choice`.',
     ports: '`next`',
     outputs:
-      'Pakai `{{input.message}}`, `{{input.context}}`, `{{input.history}}` (bukan `nodes.<id>`). Selama antrean Router: `input.task` berisi tugas aktif, termasuk task, context, attempts, dan exclusions; di luar antrean nilainya null.',
+      'Profil Konten: tiap isian sebagai `{{input.<id>}}`, dan `{{input.message}}` berisi ringkasan isian sebagai teks yang dibaca Agent. Pakai `{{input.message}}`, `{{input.context}}`, `{{input.history}}` (bukan `nodes.<id>`) Selama antrean Router: `input.task` berisi tugas aktif, termasuk task, context, attempts, dan exclusions; di luar antrean nilainya null.',
   },
   memory: {
     inputs:
@@ -234,7 +237,10 @@ const nodeDocs: Record<NodeType, NodeDoc> = {
     example: 'Agent —next→ Output dengan value="{{nodes.agent.answer}}".',
     name: 'Output',
     purpose: 'Mengirim jawaban ke pelanggan dan mengakhiri alur.',
-    keys: '`value`: teks jawaban, biasanya `{{nodes.<agent>.answer}}`; kosong berarti jawaban Agent terakhir.',
+    keys:
+      'Profil chat: `value`: teks jawaban, biasanya `{{nodes.<agent>.answer}}`; kosong berarti jawaban Agent terakhir. Profil Konten: `results`, daftar `{label, kind, value}` (maksimal ' +
+      limits.results +
+      ') dengan `kind` `image` (value = variabel file, misalnya `{{nodes.gambar.files}}`) atau `text` (value = teks/variabel); item gambar tanpa file dilewati, dan minimal satu hasil harus ada. Boleh ada beberapa Output, misalnya satu untuk jalur gagal.',
     ports: 'tidak ada',
     outputs: '—',
   },
@@ -339,6 +345,22 @@ const nodeDocs: Record<NodeType, NodeDoc> = {
     keys: '`filename`: nama file, boleh variabel (ekstensi .md dipasang otomatis). `value`: isi Markdown dengan `{{variabel}}`, misalnya `# {{nodes.isian.judul}}\\n\\n{{nodes.penulis.answer}}`. Maksimal 1 MB.',
     ports: '`next`',
     outputs: '`file` (ID file), `filename`, `size`',
+  },
+  image_gen: {
+    inputs:
+      'value berisi prompt gambar dengan {{variabel}}; image_refs (opsional) berisi variabel ID file gambar sebagai referensi.',
+    connections:
+      'Jalur biasa masuk; created dan gagal (failed) masing-masing WAJIB tersambung ke tepat satu tujuan. Letakkan Kirim media di jalur created dan Output/Agent permintaan maaf di jalur failed. Bukan tool Agent.',
+    failure:
+      'Gagal tidak menghentikan alur: port failed berjalan, files kosong, dan reason berisi belum_diatur, kredit, referensi, prompt, waktu, atau gagal. Kredit dipesan dulu dan yang tidak jadi dikembalikan. Pembatalan alur (dijeda atau diambil alih admin) tetap menghentikan alur.',
+    example:
+      'Ekstrak → Buat gambar(value="Poster {{nodes.ekstrak.produk}}"); created→Kirim media(value="{{nodes.gambar.files}}")→Output; failed→Output(permintaan maaf).',
+    name: 'Buat gambar',
+    purpose:
+      'Membuat gambar dari prompt memakai tier Model Gambar milik pemilik layanan. Hasilnya otomatis JPEG dan disimpan sebagai file data profil, siap dikirim lewat Kirim media. Memakai kredit AI akun per gambar.',
+    keys: '`value`: prompt (maksimal 4000 karakter). `image_ratio`: `1:1`/`4:5`/`9:16`. `image_count`: 1–3 (dibatasi kemampuan model). `image_brand`: true memasukkan identitas brand akun ke prompt. `image_refs`: variabel file gambar referensi (maksimal 3, hanya bila model mendukung). Batas waktu 60 detik, dipersingkat bila sisa waktu alur kurang.',
+    ports: '`created`, `failed`',
+    outputs: '`file` (ID gambar pertama), `files` (daftar ID), `count`, `reason`',
   },
 };
 const kindDocs: Record<CollectionKind, string> = {
@@ -781,6 +803,7 @@ function mediaMarkdown() {
   return `### Pengiriman gambar ke Instagram resmi
 
 - Profil untuk Instagram Login resmi boleh memakai node **Kirim media** untuk gambar JPG/PNG maksimal 8 MB per gambar. Gunakan \`media_as: "image"\`; file dapat berasal dari field File koleksi atau URL HTTPS.
+- Node **Buat gambar** menghasilkan gambar JPEG dari prompt (memakai kredit AI akun); sambungkan \`{{nodes.<id>.files}}\` ke Kirim media dengan \`media_as: "image"\`. Port \`failed\` wajib tersambung, misalnya ke Output permintaan maaf.
 - Node Kirim media otomatis mengikuti konektor sesi: caption menyatu pada WhatsApp; Instagram resmi mengirim gambar lalu caption sebagai teks terpisah. Setiap pesan memakai kredit sendiri. Atur \`send_when\` untuk menempatkan pasangan gambar/caption sebelum atau sesudah jawaban. Caption tidak dikirim bila gambar gagal atau hasil kirim belum pasti.
 - WebP statis otomatis dikonversi ke JPEG (sumber dan hasil maksimal 8 MB); file sumber tetap utuh. Jangan mengirim PDF, dokumen, audio, video, atau WebP animasi melalui konektor Instagram resmi. Jika sumbernya hanya dokumen, berikan tautan publik yang memang boleh dibagikan dalam jawaban atau teruskan ke tim; jangan menjanjikan lampiran berhasil dikirim.
 - Aplikasi menyiapkan URL gambar sementara yang berlaku 15 menit untuk diambil Meta. Jangan membuat URL tersebut dalam definisi profil atau membagikannya kepada pelanggan. Alamat publik aplikasi (APP_ORIGIN) harus dapat dijangkau Meta.
@@ -821,6 +844,7 @@ function structuralMarkdown() {
   return `## Aturan utama
 
 - Akar JSON: \`"format": "ncwa-profile"\`, \`"version": 1\`, \`name\`, \`description\`, \`collections\`, \`nodes\`, \`edges\`.
+- Peran profil (\`"role"\`): \`"chat"\` (bawaan; membalas pelanggan di WhatsApp/Instagram) atau \`"content"\` (dipakai klien sendiri di menu Konten). Peran terkunci setelah terbit. Profil Konten memakai Input sebagai formulir (\`form\`) dan Output sebagai daftar hasil (\`results\`); hanya node input, output, agent, router, condition, extract, compute, dan image_gen yang tersedia, tanpa memori, data, lampiran, file, Kirim media, dan Fallback. Tiap permintaan berdiri sendiri dan berjalan di latar belakang.
 - ID (node, koleksi, field, cabang, edge, langkah): huruf kecil, angka, atau \`_\`, diawali huruf, maksimal ${limits.idLength} karakter, unik di lingkupnya.
 - Nama node (\`label\`) unik dan tanpa spasi (pakai \`_\`). Untuk node baru, \`id\` dibentuk dari namanya dalam huruf kecil, misalnya label \`Cek_jadwal\` → id \`cek_jadwal\` → variabel \`{{nodes.cek_jadwal.first.data.jam}}\`. Saat mengubah profil, id node yang sudah ada boleh dipertahankan; editor menyamakan id dengan nama ketika nama diganti di sana.
 - Tepat satu node \`input\`. Setiap port keluar punya tepat satu edge; node akhir (\`output\`, \`fallback\`) tidak punya port keluar. Tidak boleh ada siklus.
@@ -938,6 +962,7 @@ Dokumen ini dibuat otomatis dari validator NC-WA. Nilai yang tidak tercantum di 
   "version": 1,
   "name": "Nama profil",
   "description": "Ditampilkan ke klien saat memilih profil",
+  "role": "chat",
   "collections": [],
   "nodes": [],
   "edges": [{ "id": "e1", "source": "input", "port": "next", "target": "layanan" }]
@@ -1070,6 +1095,7 @@ ${table(
     ['Konteks kriteria Router tabel', routerContextChars.toLocaleString('id-ID') + ' karakter, tanpa pemotongan'],
     ['Kirim media per balasan', maxMediaPerReply + ' file'],
     ['Isi file Buat file', maxGeneratedBytes / 1024 / 1024 + ' MB'],
+    ['Gambar per node Buat gambar', limits.imageCount + ' gambar, batas waktu 60 detik'],
   ],
 )}
 

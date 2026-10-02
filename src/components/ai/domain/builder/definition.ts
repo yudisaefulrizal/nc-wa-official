@@ -2,6 +2,7 @@
 import { ApiError } from '../../../../libraries/errors.js';
 import { record } from '../../../../libraries/validation.js';
 import { modelTiers, type ModelTier } from '../pipeline/models.js';
+import { imageRatios, type ImageRatio } from '../image-provider.js';
 import { filterOperators, maxToolLimit, type FilterOperator } from './record-query.js';
 
 export const nodeTypes = [
@@ -23,6 +24,7 @@ export const nodeTypes = [
   'receive',
   'file_json',
   'file_md',
+  'image_gen',
 ] as const;
 export type NodeType = (typeof nodeTypes)[number];
 export const fieldTypes = [
@@ -73,6 +75,38 @@ export interface ExtractField {
   required: boolean;
   hint: string;
   options: string[];
+}
+// Peran profil: Asisten chat membalas pelanggan di WhatsApp/Instagram; Konten dipakai klien sendiri di menu Konten.
+export const graphRoles = ['chat', 'content'] as const;
+export type GraphRole = (typeof graphRoles)[number];
+// Node yang tersedia di profil Konten: tanpa pelanggan chat, memori, data profil, lampiran, dan Fallback.
+export const contentNodeTypes: readonly NodeType[] = [
+  'input',
+  'output',
+  'agent',
+  'router',
+  'condition',
+  'extract',
+  'compute',
+  'image_gen',
+];
+// Isian formulir profil Konten (di node Input). Nilainya dibaca sebagai {{input.<id>}}; jenis gambar berisi ID file
+// Pustaka konten milik klien.
+export const formFieldTypes = ['text', 'textarea', 'choice', 'image'] as const;
+export interface FormField {
+  id: string;
+  label: string;
+  type: (typeof formFieldTypes)[number];
+  required: boolean;
+  options: string[];
+}
+// Kunci input yang selalu ada; id isian formulir tidak boleh sama dengan ini.
+export const reservedInputKeys = ['message', 'context', 'history', 'task'] as const;
+// Hasil profil Konten (di node Output): gambar dari variabel file, atau teks dari variabel/templat.
+export interface ResultItem {
+  label: string;
+  kind: 'image' | 'text';
+  value: string;
 }
 // Node Set / Hitung: operasi tetap dan jumlah argumennya. Tidak ada rumus bebas atau eval.
 export const computeArity = {
@@ -178,6 +212,10 @@ export const limits = {
   tasks: 5,
   taskAttempts: 3,
   steps: 20,
+  imageCount: 3,
+  imageRefs: 3,
+  formFields: 12,
+  results: 6,
   memory: 60,
   idLength: 32,
   labelLength: 100,
@@ -234,6 +272,14 @@ export interface GraphNode {
   caption?: string;
   send_when?: 'before' | 'after';
   media_as?: 'auto' | 'image' | 'document';
+  // Profil Konten: isian formulir di node Input dan daftar hasil di node Output.
+  form?: FormField[];
+  results?: ResultItem[];
+  // Node Buat gambar: prompt di `value`; rasio, jumlah gambar, identitas brand akun, dan variabel gambar referensi.
+  image_ratio?: ImageRatio;
+  image_count?: number;
+  image_brand?: boolean;
+  image_refs?: string;
   // Node Buat file (JSON, Markdown): nama file hasil, boleh berisi variabel; isinya template di `value`.
   filename?: string;
   // Node Terima media: jenis lampiran pelanggan yang diterima.
@@ -257,6 +303,7 @@ export interface GraphDefinition {
   version: 1;
   name: string;
   description: string;
+  role: GraphRole;
   collections: Collection[];
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -422,6 +469,12 @@ export function parseDefinition(value: unknown): GraphDefinition {
       ...(n.accept !== undefined
         ? { accept: [...new Set(list(n.accept, 2).map(v => choice(v, ['image', 'document'] as const)))] }
         : {}),
+      ...(n.form !== undefined ? { form: list(n.form, limits.formFields).map(formField) } : {}),
+      ...(n.results !== undefined ? { results: list(n.results, limits.results).map(resultItem) } : {}),
+      ...(n.image_ratio !== undefined ? { image_ratio: choice(n.image_ratio, imageRatios) } : {}),
+      ...(n.image_count !== undefined ? { image_count: imageCount(n.image_count) } : {}),
+      ...(n.image_brand !== undefined ? { image_brand: n.image_brand === true } : {}),
+      ...(n.image_refs !== undefined ? { image_refs: text(n.image_refs, 500) } : {}),
       ...(n.memory !== undefined ? { memory: n.memory === '' ? '' : id(n.memory) } : {}),
       ...(n.context_memory !== undefined
         ? { context_memory: n.context_memory === '' ? '' : id(n.context_memory) }
@@ -444,11 +497,31 @@ export function parseDefinition(value: unknown): GraphDefinition {
       version: 1,
       name: text(root.name, 100),
       description: text(root.description ?? '', 1000),
+      role: choice(root.role ?? 'chat', graphRoles),
       collections,
       nodes,
       edges,
     }),
   );
+}
+function formField(v: unknown): FormField {
+  const f = record(v);
+  return {
+    id: id(f.id),
+    label: text(f.label ?? f.id, 100),
+    type: choice(f.type, formFieldTypes),
+    required: f.required === true,
+    options: list(f.options ?? [], limits.options).map(v => text(v, 100)),
+  };
+}
+function resultItem(v: unknown): ResultItem {
+  const r = record(v);
+  return { label: text(r.label, 100), kind: choice(r.kind, ['image', 'text'] as const), value: text(r.value, 2000) };
+}
+function imageCount(v: unknown) {
+  if (!Number.isSafeInteger(v) || Number(v) < 1 || Number(v) > limits.imageCount)
+    throw bad('Jumlah gambar harus 1–' + limits.imageCount + '.');
+  return Number(v);
 }
 function maxChars(v: unknown) {
   if (!Number.isSafeInteger(v) || Number(v) < 200 || Number(v) > maxCollectionText)
@@ -539,6 +612,7 @@ export function ports(node: GraphNode): string[] {
   if (node.type === 'condition') return ['yes', 'no'];
   if (recordLookup(node)) return ['found', 'empty'];
   if (node.type === 'receive') return ['received', 'none'];
+  if (node.type === 'image_gen') return ['created', 'failed'];
   return ['next'];
 }
 export function validateGraph(d: GraphDefinition): GraphIssue[] {
@@ -571,6 +645,7 @@ export function validateGraph(d: GraphDefinition): GraphIssue[] {
   const contextMemories = d.nodes.filter(n => n.type === 'context_memory');
   if (contextMemories.length > 1) add('Hanya boleh satu Memori konteks.', contextMemories[1].id);
   const linkedTools = new Set(d.nodes.flatMap(n => n.tools));
+  const inputKeys: string[] = [...reservedInputKeys, ...(inputs[0]?.form ?? []).map(f => f.id)];
   for (const n of d.nodes) {
     if (n.memory && (!memoryConsumers.includes(n.type) || nodes.get(n.memory)?.type !== 'memory'))
       add('Sambungan memori harus berasal dari Shared Memory menuju Router, Agent, Context, atau Ekstrak.', n.id);
@@ -592,6 +667,37 @@ export function validateGraph(d: GraphDefinition): GraphIssue[] {
         if (['choice', 'multichoice'].includes(f.type) && !f.options.length)
           add('Field pilihan ' + f.id + ' membutuhkan opsi.', n.id);
     }
+    if (d.role === 'content') {
+      if (!contentNodeTypes.includes(n.type)) add('Node ini tidak tersedia di profil Konten.', n.id);
+      if (n.fallback) add('Fallback tidak tersedia di profil Konten.', n.id);
+    }
+    if (n.form !== undefined && !(n.type === 'input' && d.role === 'content'))
+      add('Isian formulir hanya untuk Input profil Konten.', n.id);
+    if (n.results !== undefined && !(n.type === 'output' && d.role === 'content'))
+      add('Daftar hasil hanya untuk Output profil Konten.', n.id);
+    if (d.role === 'content' && n.type === 'input') {
+      const form = n.form ?? [];
+      if (!form.length) add('Tambahkan minimal satu isian formulir.', n.id);
+      if (new Set(form.map(f => f.id)).size !== form.length) add('ID isian formulir harus unik.', n.id);
+      if (form.some(f => (reservedInputKeys as readonly string[]).includes(f.id)))
+        add('ID isian formulir tidak boleh message, context, history, atau task.', n.id);
+      for (const f of form)
+        if (f.type === 'choice' && !f.options.length) add('Isian pilihan ' + f.id + ' membutuhkan opsi.', n.id);
+    }
+    if (d.role === 'content' && n.type === 'output') {
+      const results = n.results ?? [];
+      if (!results.length) add('Tambahkan minimal satu hasil.', n.id);
+      if (results.some(r => !r.label.trim() || !r.value.trim())) add('Setiap hasil membutuhkan nama dan nilai.', n.id);
+    }
+    if (n.type === 'image_gen' && !n.value.trim()) add('Isi prompt gambar.', n.id);
+    if (
+      (n.image_ratio !== undefined ||
+        n.image_count !== undefined ||
+        n.image_brand !== undefined ||
+        n.image_refs !== undefined) &&
+      n.type !== 'image_gen'
+    )
+      add('Pengaturan gambar hanya untuk Buat gambar.', n.id);
     if (n.type === 'media' && !n.value.trim()) add('Isi file yang dikirim, misalnya variabel field File.', n.id);
     if ((n.type === 'file_json' || n.type === 'file_md') && !n.value.trim())
       add('Isi template file wajib diisi.', n.id);
@@ -741,6 +847,7 @@ export function validateGraph(d: GraphDefinition): GraphIssue[] {
       [n.query, -1],
       [n.value, -1],
       [n.caption ?? '', -1],
+      ...(n.results ?? []).map(r => [r.value, -1] as [string, number]),
       ...(n.filters ?? []).map(f => [f.value, -1] as [string, number]),
       ...(n.type === 'condition'
         ? conditionRules(n).flatMap(r => [
@@ -776,7 +883,7 @@ export function validateGraph(d: GraphDefinition): GraphIssue[] {
           )
             add('Variabel ' + match[1] + ' tidak dikenal.', n.id);
         }
-        if (path[0] === 'input' && path[1] && !['message', 'context', 'history', 'task'].includes(path[1]))
+        if (path[0] === 'input' && path[1] && !inputKeys.includes(path[1]))
           add('Field input tidak dikenal: ' + path[1] + '.', n.id);
         if (path[0] === 'nodes') {
           const source = nodes.get(path[1]);
@@ -819,6 +926,7 @@ export function outputFields(source: GraphNode): string[] {
     receive: ['file', 'filename', 'type', 'mimetype', 'caption'],
     file_json: ['file', 'filename', 'size'],
     file_md: ['file', 'filename', 'size'],
+    image_gen: ['file', 'files', 'count', 'reason'],
   };
   return fields[source.type];
 }
@@ -936,7 +1044,8 @@ export function validateRecord(c: Collection, value: unknown, create = false): R
   }
   return result;
 }
-export function blankDefinition(name = 'Profil baru'): GraphDefinition {
+export function blankDefinition(name = 'Profil baru', role: GraphRole = 'chat'): GraphDefinition {
+  if (role === 'content') return blankContentDefinition(name);
   const node = (id: string, type: NodeType, x: number, prompt = ''): GraphNode => ({
     id,
     type,
@@ -961,6 +1070,7 @@ export function blankDefinition(name = 'Profil baru'): GraphDefinition {
     version: 1,
     name,
     description: '',
+    role: 'chat',
     collections: [],
     nodes: [
       node('input', 'input', 80),
@@ -970,6 +1080,56 @@ export function blankDefinition(name = 'Profil baru'): GraphDefinition {
     edges: [
       { id: 'e1', source: 'input', port: 'next', target: 'agent' },
       { id: 'e2', source: 'agent', port: 'next', target: 'output' },
+    ],
+  };
+}
+// Profil Konten awal: formulir satu isian → Buat gambar → hasil gambar; jalur gagal memberi tahu klien dengan teks.
+function blankContentDefinition(name: string): GraphDefinition {
+  const base = blankDefinition(name);
+  const input: GraphNode = {
+    ...base.nodes[0],
+    label: 'Formulir',
+    form: [{ id: 'brief', label: 'Brief gambar', type: 'textarea', required: true, options: [] }],
+  };
+  const image: GraphNode = {
+    ...base.nodes[1],
+    id: 'gambar',
+    type: 'image_gen',
+    label: 'Gambar',
+    prompt: '',
+    x: 420,
+    value: '{{input.brief}}',
+    image_ratio: '1:1',
+    image_count: 1,
+    image_brand: true,
+    image_refs: '',
+  };
+  const output = (id: string, label: string, y: number, item: ResultItem): GraphNode => ({
+    ...base.nodes[2],
+    id,
+    label,
+    x: 760,
+    y,
+    value: '',
+    results: [item],
+  });
+  return {
+    ...base,
+    role: 'content',
+    nodes: [
+      input,
+      image,
+      output('hasil', 'Hasil', 240, { label: 'Gambar', kind: 'image', value: '{{nodes.gambar.files}}' }),
+      output('gagal', 'Gagal', 400, {
+        label: 'Pesan',
+        kind: 'text',
+        value: 'Gambar belum berhasil dibuat ({{nodes.gambar.reason}}). Kredit gambar dikembalikan.',
+      }),
+    ],
+    edges: [
+      { id: 'e1', source: 'input', port: 'next', target: 'gambar' },
+      { id: 'e2', source: 'gambar', port: 'created', target: 'hasil' },
+      { id: 'e3', source: 'gambar', port: 'failed', target: 'gagal' },
     ],
   };
 }

@@ -367,7 +367,10 @@ async function loadAdminProfiles() {
       icon = element('span', 'admin-profile-icon');
     icon.innerHTML = chatIcon;
     const text = element('div');
-    text.append(element('strong', '', p.name), element('small', '', p.nodes + ' node'));
+    text.append(
+      element('strong', '', p.name),
+      element('small', '', (p.role === 'content' ? 'Konten' : 'Asisten chat') + ' · ' + p.nodes + ' node'),
+    );
     name.append(icon, text);
     const flow = element('div', 'admin-profile-cell');
     flow.append(
@@ -379,7 +382,10 @@ async function loadAdminProfiles() {
       ),
     );
     const usage = element('div', 'admin-profile-cell');
-    usage.append(element('strong', '', p.sessions + ' sesi'), element('small', '', p.data_profiles + ' data profil'));
+    if (p.role === 'content')
+      usage.append(element('strong', '', 'Menu Konten'), element('small', '', 'dipakai klien langsung'));
+    else
+      usage.append(element('strong', '', p.sessions + ' sesi'), element('small', '', p.data_profiles + ' data profil'));
     const toggle = element('label', 'ai-toggle admin-profile-toggle'),
       input = document.createElement('input'),
       state = element('strong', '', p.enabled ? 'Aktif' : 'Nonaktif');
@@ -393,11 +399,13 @@ async function loadAdminProfiles() {
         if (
           !enabled &&
           !confirm(
-            'Nonaktifkan ' +
-              p.name +
-              '? AI berhenti membalas di ' +
-              p.sessions +
-              ' sesi yang memakainya. Data profil klien tidak dihapus.',
+            p.role === 'content'
+              ? 'Nonaktifkan ' + p.name + '? Klien tidak bisa lagi membuat konten dengan profil ini.'
+              : 'Nonaktifkan ' +
+                  p.name +
+                  '? AI berhenti membalas di ' +
+                  p.sessions +
+                  ' sesi yang memakainya. Data profil klien tidak dihapus.',
           )
         ) {
           input.checked = true;

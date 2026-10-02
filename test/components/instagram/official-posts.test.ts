@@ -108,7 +108,7 @@ async function rememberMedia() {
   assert.equal(media.mimetype, 'image/jpeg');
 }
 
-test('foto diposting sekali, JPEG dapat diambil Meta, caption utuh, dan sumber tetap PNG', async () => {
+test('foto diposting sekali, JPEG dapat diambil Meta, caption utuh, dan sumber hasil tetap JPEG', async () => {
   const body = payload(),
     beforePublished = published;
   const result = await api('post', '/api/instagram/posts').send(body).expect(200);
@@ -120,7 +120,7 @@ test('foto diposting sekali, JPEG dapat diambil Meta, caption utuh, dan sumber t
   const publicImage = await request(app).get(url.pathname).expect(200);
   assert.match(publicImage.headers['content-type'], /image\/jpeg/);
   await api('get', file.url)
-    .expect('Content-Type', /image\/png/)
+    .expect('Content-Type', /image\/jpeg/)
     .expect(200);
   assert.equal((await api('post', '/api/instagram/posts').send(body)).body.status, 'published');
   await api('post', '/api/instagram/posts/' + body.requestId + '/advance').expect(200);

@@ -22,7 +22,7 @@ Validasi menggunakan MySQL terisolasi dan Meta tiruan:
 
 ```sh
 npm run check
-npm run test:isolated -- test/components/instagram/official-posts.test.ts test/components/instagram/official.test.ts test/components/ai/image-generator.test.ts scripts/checks/browser-image-generator-check.ts
+npm run test:isolated -- test/components/instagram/official-posts.test.ts test/components/instagram/official.test.ts test/components/ai/content-jobs.test.ts scripts/checks/browser-content-check.ts
 ```
 
 Pemeriksaan browser mencakup 1280 px dan 390 px, dialog, caption, akun kosong, publikasi melalui API, status tersimpan, dan gambar sementara JPEG yang dapat diambil Meta tiruan. Posting ke akun Instagram sungguhan **belum diuji**.

@@ -23,7 +23,7 @@ function nodeSummary(n) {
     memory = (n.context_memory ? ' · Konteks' : '') + (n.memory ? ' · Riwayat' : '');
   switch (n.type) {
     case 'input':
-      return 'Pesan pelanggan';
+      return state.document.role === 'content' ? (n.form ?? []).length + ' isian formulir' : 'Pesan pelanggan';
     case 'memory':
       return (
         (n.memory_limit ?? 20) + ' pesan · ' + state.document.nodes.filter(x => x.memory === n.id).length + ' node'
@@ -65,11 +65,13 @@ function nodeSummary(n) {
       return n.send_when === 'after' ? 'Sesudah jawaban' : 'Sebelum jawaban';
     case 'receive':
       return (n.accept ?? []).map(t => (t === 'image' ? 'Gambar' : 'Dokumen')).join(', ') || 'Tidak ada jenis';
+    case 'image_gen':
+      return (n.image_ratio ?? '1:1') + ' · ' + (n.image_count ?? 1) + ' gambar';
     case 'file_json':
     case 'file_md':
       return (n.filename?.trim() || n.label) + (n.type === 'file_json' ? '.json' : '.md');
     case 'output':
-      return 'Kirim jawaban';
+      return state.document.role === 'content' ? (n.results ?? []).length + ' hasil' : 'Kirim jawaban';
     default:
       return 'Teruskan ke manusia';
   }
@@ -506,7 +508,8 @@ function filterPalette() {
   const q = $('node-search').value.trim().toLowerCase();
   for (const item of $('node-types').querySelectorAll('.palette-item')) {
     const [label, description, , words] = kinds[item.dataset.kind];
-    item.hidden = Boolean(q) && !(label + ' ' + description + ' ' + words).toLowerCase().includes(q);
+    const unavailable = isContent() && !contentNodeTypes.includes(item.dataset.kind);
+    item.hidden = unavailable || (Boolean(q) && !(label + ' ' + description + ' ' + words).toLowerCase().includes(q));
   }
   for (const heading of $('node-types').querySelectorAll('.palette-group'))
     heading.hidden = !$('node-types').querySelector(

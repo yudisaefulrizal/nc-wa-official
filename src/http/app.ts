@@ -6,8 +6,8 @@ import {
   aiAdminRoutes,
   builderAdminRoutes,
   builderAccountRoutes,
-  imageAccountRoutes,
-  imageAdminRoutes,
+  contentAccountRoutes,
+  contentAdminRoutes,
 } from '../components/ai/index.js';
 import { payments as defaultPayments } from './services.js';
 import express from 'express';
@@ -44,11 +44,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   const normalJson = express.json({ limit: '16kb' }),
     builderJson = express.json({ limit: '128kb' });
   app.use((req, res, next) =>
-    (req.path.startsWith('/api/admin/ai/builder') ||
-      req.path.startsWith('/api/admin/ai/image-profiles') ||
-      req.path.startsWith('/api/content/jobs')
-      ? builderJson
-      : normalJson)(req, res, next),
+    (req.path.startsWith('/api/admin/ai/builder') ? builderJson : normalJson)(req, res, next),
   );
   billingPublicRoutes(app, { payments, gateway });
   assetPublicRoutes(app, { gateway });
@@ -84,7 +80,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   billingRoutes(app, { payments, gateway });
   aiAccountRoutes(app, {});
   builderAccountRoutes(app);
-  imageAccountRoutes(app);
+  contentAccountRoutes(app);
   instagramRoutes(app, { instagram });
   referralRoutes(app, { referral });
   app.use('/api/admin', (_req, res, next) => {
@@ -98,7 +94,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   billingAdminRoutes(app, { payments });
   aiAdminRoutes(app);
   builderAdminRoutes(app);
-  imageAdminRoutes(app);
+  contentAdminRoutes(app);
   app.get('/dashboard/admin/ai-builder', (_req, res) => res.type('html').send(page('ai-builder/index.html')));
   // Isi koleksi kini dikelola di Asisten AI › Knowledge; tautan lama diarahkan ke data profil yang sama.
   app.get('/dashboard/ai-data', (req, res) => {
@@ -137,7 +133,6 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
     if (cacheRenderedPages) pages.set(name, html);
     return html;
   }
-  app.get('/dashboard/admin/image-builder', (_req, res) => res.type('html').send(page('image-builder/index.html')));
   // URL berhash tidak mungkin basi, jadi di-cache permanen; selain itu selalu divalidasi ulang. Halaman hanya
   // dilayani lewat page(), jadi folder tidak pernah menjawab dengan index.html mentahnya.
   app.use(

@@ -7,14 +7,28 @@ import { transaction, lockAccount } from './transaction.js';
 import * as filesSql from '../data-access/content-files-queries.js';
 import * as storage from '../data-access/content-file-storage.js';
 export const contentLimits = { uploadBytes: 10 * 1024 * 1024, storageBytes: 512 * 1024 * 1024, files: 500 };
-export async function normalizeContent(data: Buffer) {
+const jpegQuality = 90;
+// JPEG tidak punya transparansi, jadi bagian transparan diisi putih. Kualitas tinggi menjaga teks tipis pada poster.
+export async function toJpeg(data: Buffer) {
+  try {
+    return await sharp(data, { limitInputPixels: 40000000, animated: false })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: jpegQuality })
+      .toBuffer();
+  } catch {
+    throw new ApiError(400, 'invalid_image', 'Gambar tidak dapat diproses.');
+  }
+}
+// Hasil generator disimpan sebagai JPEG; referensi tetap PNG supaya logo transparan tetap utuh.
+export const contentMimetype = (kind: string) => (kind === 'result' ? 'image/jpeg' : 'image/png');
+export async function normalizeContent(data: Buffer, kind: 'reference' | 'result') {
   if (!data.length || data.length > 15 * 1024 * 1024)
     throw new ApiError(400, 'invalid_image', 'Gambar terlalu besar atau kosong.');
   try {
     const image = sharp(data, { limitInputPixels: 20000000, animated: false });
     const meta = await image.metadata();
     if (!['png', 'jpeg', 'webp'].includes(meta.format ?? '') || (meta.pages ?? 1) > 1) throw Error('unsupported');
-    const result = await image.png().toBuffer();
+    const result = kind === 'result' ? await toJpeg(data) : await image.png().toBuffer();
     if (result.length > 15 * 1024 * 1024) throw Error('too_large');
     return result;
   } catch {
@@ -22,7 +36,7 @@ export async function normalizeContent(data: Buffer) {
   }
 }
 export async function storeContent(account: string, data: Buffer, kind: 'reference' | 'result') {
-  const png = await normalizeContent(data),
+  const png = await normalizeContent(data, kind),
     id = randomUUID();
   try {
     await transaction(async c => {

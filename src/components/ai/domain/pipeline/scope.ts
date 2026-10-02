@@ -21,6 +21,8 @@ export interface ToolContext {
     readonly mimetype: string;
     readonly caption: string;
   };
+  // Profil Konten: nilai isian formulir yang sudah divalidasi, dibaca sebagai {{input.<id>}}.
+  readonly form?: Readonly<Record<string, unknown>>;
   readonly requestId: string;
   readonly behavior?: string;
   readonly fallbackEnabled?: boolean;

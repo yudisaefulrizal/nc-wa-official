@@ -2,6 +2,7 @@
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import * as builder from '../domain/builder/store.js';
+import { blankDefinition, graphRoles } from '../domain/builder/definition.js';
 import { profileSkillZip, skillName } from '../domain/builder/skill.js';
 import { simulate } from '../domain/builder/simulation.js';
 import { runAssistant } from '../domain/builder/assistant.js';
@@ -34,6 +35,12 @@ export function builderAdminRoutes(app: express.Express) {
   app.delete(base + '/:id/force', async (req, res) =>
     res.json(await forceDeleteProfile(ai, res.locals.account.id, String(req.params.id), req.body)),
   );
+  // Template profil baru per peran, supaya editor tidak menyalin struktur awal yang dimiliki server.
+  app.get(base + '/blank/:role', (req, res) => {
+    const role = graphRoles.find(r => r === req.params.role);
+    if (!role) throw new ApiError(404, 'not_found', 'Peran profil tidak dikenal.');
+    res.json(blankDefinition(role === 'content' ? 'Profil Konten baru' : 'Profil baru', role));
+  });
   app.get(base + '/:id', async (req, res) => res.json(await builder.graphState(String(req.params.id))));
   app.put(base + '/:id', async (req, res) =>
     res.json(await builder.saveGraph(res.locals.account.id, String(req.params.id), req.body)),

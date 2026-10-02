@@ -1,9 +1,10 @@
-// Page Konten: profil generator, referensi, brand, pekerjaan asinkron dan pustaka hasil milik akun.
+// Page Konten: profil Konten dari Editor profil (formulir dinamis), pekerjaan asinkron, pustaka hasil, dan identitas brand.
 let contentProfiles = [],
   contentCapabilities = {},
-  contentReferences = [],
   contentBrandData = {},
-  contentSelectedJob = null;
+  contentSelectedJob = null,
+  // Isian jenis gambar: id isian → {id, url} file Pustaka konten.
+  contentImages = {};
 let contentLibraryPage = 1,
   contentTimer,
   contentLoading = false,
@@ -19,39 +20,34 @@ const contentStates = {
 };
 const contentStages = {
   queued: 'Pekerjaan masuk antrean.',
-  prompt: 'Menyusun prompt gambar…',
-  generating: 'Membuat gambar… Proses ini dapat memerlukan beberapa menit.',
-  saving: 'Menyimpan hasil ke pustaka…',
+  running: 'Memproses… Pembuatan gambar dapat memerlukan beberapa menit.',
 };
 const selectedContentProfile = () => contentProfiles.find(p => p.id === $('content-profile').value);
+const contentFileUrl = id => '/api/content/files/' + id;
+const showContentBalance = async () => {
+  const balance = await api('/api/ai/wallet');
+  $('content-balance').textContent = 'Kredit AI ' + Number(balance.balance).toLocaleString('id-ID');
+};
 async function loadContent() {
   if (contentLoading) return;
   contentLoading = true;
   try {
     const previous = $('content-profile').value;
-    const [profiles, capabilities, balance, brand] = await Promise.all([
+    const [profiles, capabilities, brand] = await Promise.all([
       api('/api/content/profiles'),
       api('/api/content/capabilities'),
-      api('/api/ai/wallet'),
       api('/api/content/brand'),
     ]);
     contentProfiles = profiles;
     contentCapabilities = capabilities;
     contentBrandData = brand;
-    $('content-balance').textContent = 'Kredit AI ' + Number(balance.balance).toLocaleString('id-ID');
+    await showContentBalance();
     $('content-profile').replaceChildren(
-      new Option('Pilih profil generator', ''),
+      new Option('Pilih jenis konten', ''),
       ...profiles.map(p => new Option(p.name, p.id)),
     );
     $('content-profile').value = profiles.some(p => p.id === previous) ? previous : (profiles[0]?.id ?? '');
     renderContentProfile();
-    $('content-notice').textContent = !profiles.length
-      ? 'Belum ada profil generator aktif. Owner perlu menerbitkan dan mengaktifkan profil.'
-      : !capabilities.configured
-        ? 'Model Gambar belum dikonfigurasi oleh owner.'
-        : !capabilities.creditsPerImage
-          ? 'Tarif kredit gambar belum diatur oleh owner.'
-          : '';
     await loadContentLibrary();
     if (contentSelectedJob) await refreshContentJob();
     else {
@@ -67,82 +63,121 @@ async function loadContent() {
     contentLoading = false;
   }
 }
+// Nilai isian formulir saat ini; isian gambar berisi ID file yang dipilih.
+function contentValues() {
+  const profile = selectedContentProfile();
+  return Object.fromEntries(
+    (profile?.fields ?? []).map(field => [
+      field.id,
+      field.type === 'image'
+        ? (contentImages[field.id]?.id ?? '')
+        : ($('content-fields').querySelector(`[name="${field.id}"]`)?.value ?? ''),
+    ]),
+  );
+}
 function renderContentProfile() {
   const profile = selectedContentProfile();
-  const values = Object.fromEntries(
-    [...$('content-custom-fields').querySelectorAll('[name]')].map(el => [el.name, el.value]),
-  );
+  const values = contentValues();
   $('content-profile-description').textContent = profile?.description ?? '';
-  $('content-custom-fields').replaceChildren(
-    ...(profile?.fields ?? []).map(field => {
-      const label = element('label', '', field.label + (field.required ? ' *' : ''));
-      const control = document.createElement(
-        field.type === 'choice' ? 'select' : field.type === 'textarea' ? 'textarea' : 'input',
-      );
-      control.name = field.id;
-      control.required = field.required;
-      control.maxLength = field.type === 'textarea' ? 2000 : 500;
-      if (field.type === 'textarea') control.rows = 3;
-      if (field.type === 'choice')
-        control.append(new Option('Pilih…', ''), ...field.options.map(v => new Option(v, v)));
-      control.value = values[field.id] ?? '';
-      label.append(control);
-      return label;
-    }),
+  contentImages = Object.fromEntries(
+    Object.entries(contentImages).filter(([id]) => profile?.fields.some(f => f.id === id)),
   );
-  const oldRatio = $('content-ratios').querySelector('input:checked')?.value;
-  $('content-ratios').replaceChildren(
-    ...(profile?.ratios ?? []).map((ratio, i) => {
-      const label = element('label'),
-        input = document.createElement('input');
-      input.type = 'radio';
-      input.name = 'content-ratio';
-      input.value = ratio;
-      input.checked = oldRatio ? oldRatio === ratio : i === 0;
-      label.append(input, document.createTextNode(ratio));
-      return label;
-    }),
+  $('content-fields').replaceChildren(
+    ...(profile?.fields ?? []).map(field => contentField(field, values[field.id] ?? '')),
   );
-  if (!$('content-ratios').querySelector('input:checked')) $('content-ratios').querySelector('input')?.click();
-  const oldCount = $('content-count').value,
-    max = Math.min(profile?.maxImages ?? 1, contentCapabilities.maxImages ?? 1);
-  $('content-count').replaceChildren(
-    ...Array.from({ length: max }, (_, i) => new Option(i + 1 + ' gambar', String(i + 1))),
-  );
-  if (Number(oldCount) <= max) $('content-count').value = oldCount;
-  $('content-reference-field').hidden = !(profile?.references && contentCapabilities.references);
-  if ($('content-reference-field').hidden) contentReferences = [];
-  renderContentReferences();
+  $('content-notice').textContent = !contentProfiles.length
+    ? 'Belum ada profil Konten aktif. Pemilik layanan perlu menerbitkan dan mengaktifkan profil.'
+    : needsImages() && !contentCapabilities.configured
+      ? 'Model Gambar belum dikonfigurasi oleh owner.'
+      : needsImages() && !contentCapabilities.creditsPerImage
+        ? 'Tarif kredit gambar belum diatur oleh owner.'
+        : '';
   updateContentEstimate();
 }
-function updateContentEstimate() {
-  const count = Number($('content-count').value) || 1;
-  const cost = count * (contentCapabilities.creditsPerImage ?? 0);
-  $('content-estimate').textContent =
-    'Estimasi ' +
-    cost.toLocaleString('id-ID') +
-    ' kredit · ' +
-    count +
-    ' gambar. Hanya hasil tersimpan yang ditagihkan.';
-  $('content-generate').disabled =
-    !selectedContentProfile() || !contentCapabilities.configured || !cost || contentUploading;
+const needsImages = () => (selectedContentProfile()?.maxImages ?? 0) > 0;
+function contentField(field, value) {
+  if (field.type === 'image') return contentImageField(field);
+  const label = element('label', '', field.label + (field.required ? ' *' : ''));
+  const control = document.createElement(
+    field.type === 'choice' ? 'select' : field.type === 'textarea' ? 'textarea' : 'input',
+  );
+  control.name = field.id;
+  control.required = field.required;
+  control.maxLength = field.type === 'textarea' ? 4000 : 500;
+  if (field.type === 'textarea') control.rows = 4;
+  if (field.type === 'choice') control.append(new Option('Pilih…', ''), ...field.options.map(v => new Option(v, v)));
+  control.value = value;
+  label.append(control);
+  return label;
 }
-function renderContentReferences() {
-  $('content-references').replaceChildren(
-    ...contentReferences.map(ref => {
-      const box = element('div', 'content-reference-thumb'),
-        image = document.createElement('img');
-      image.src = ref.url;
-      image.alt = 'Referensi produk';
-      const remove = button('×', () => {
-        contentReferences = contentReferences.filter(r => r.id !== ref.id);
-        renderContentReferences();
-      });
-      remove.setAttribute('aria-label', 'Lepas referensi');
-      box.append(image, remove);
-      return box;
+function contentImageField(field) {
+  const box = element('div', 'content-image-field'),
+    thumbs = element('div', 'content-references'),
+    input = document.createElement('input');
+  const render = () =>
+    thumbs.replaceChildren(
+      ...(contentImages[field.id]
+        ? [
+            contentThumb(contentImages[field.id], () => {
+              delete contentImages[field.id];
+              render();
+            }),
+          ]
+        : []),
+    );
+  input.type = 'file';
+  input.accept = 'image/png,image/jpeg,image/webp';
+  input.setAttribute('aria-label', 'Unggah ' + field.label);
+  input.onchange = () =>
+    run(async () => {
+      if (!input.files[0]) return;
+      contentUploading = true;
+      updateContentEstimate();
+      try {
+        contentImages[field.id] = await uploadContentImage(input.files[0]);
+        render();
+      } finally {
+        contentUploading = false;
+        input.value = '';
+        updateContentEstimate();
+      }
+    });
+  const pick = button('Dari pustaka', () =>
+    pickContentReference(ref => {
+      contentImages[field.id] = ref;
+      render();
     }),
   );
+  pick.className = 'secondary';
+  box.append(element('span', 'content-field-label', field.label + (field.required ? ' *' : '')), thumbs, input, pick);
+  render();
+  return box;
+}
+function contentThumb(ref, onRemove) {
+  const box = element('div', 'content-reference-thumb'),
+    image = document.createElement('img'),
+    remove = button('×', onRemove);
+  image.src = ref.url;
+  image.alt = 'Gambar referensi';
+  remove.setAttribute('aria-label', 'Lepas referensi');
+  box.append(image, remove);
+  return box;
+}
+function updateContentEstimate() {
+  const profile = selectedContentProfile();
+  const images = profile?.maxImages ?? 0;
+  const cost = images * (contentCapabilities.creditsPerImage ?? 0);
+  $('content-estimate').textContent = !profile
+    ? ''
+    : images
+      ? 'Estimasi hingga ' +
+        images +
+        ' gambar · ' +
+        cost.toLocaleString('id-ID') +
+        ' kredit. Hanya gambar yang jadi yang ditagihkan.'
+      : 'Memakai kredit AI sesuai panjang teks.';
+  $('content-generate').disabled =
+    !profile || contentUploading || (images > 0 && (!contentCapabilities.configured || !cost));
 }
 async function uploadContentImage(file) {
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024)
@@ -156,37 +191,11 @@ async function uploadContentImage(file) {
   if (!response.ok) throw Error(result.message ?? 'Unggah referensi gagal.');
   return result;
 }
-$('content-upload').onchange = () =>
-  run(async () => {
-    const files = [...$('content-upload').files];
-    if (files.length + contentReferences.length > 4) throw Error('Maksimum empat referensi gambar.');
-    contentUploading = true;
-    $('content-generate').disabled = true;
-    try {
-      for (const file of files) contentReferences.push(await uploadContentImage(file));
-      renderContentReferences();
-    } finally {
-      contentUploading = false;
-      $('content-upload').value = '';
-      renderContentReferences();
-      updateContentEstimate();
-    }
-  });
 $('content-profile').onchange = renderContentProfile;
-$('content-count').onchange = updateContentEstimate;
 $('content-form').onsubmit = event => {
   event.preventDefault();
   void run(async () => {
-    const body = {
-      profileId: $('content-profile').value,
-      brief: $('content-brief').value,
-      fields: Object.fromEntries(
-        [...$('content-custom-fields').querySelectorAll('[name]')].map(el => [el.name, el.value]),
-      ),
-      ratio: $('content-ratios').querySelector('input:checked')?.value,
-      count: Number($('content-count').value),
-      references: contentReferences.map(r => r.id),
-    };
+    const body = { profileId: $('content-profile').value, values: contentValues() };
     const serialized = JSON.stringify(body);
     if (!contentRequestId || serialized !== contentRequestBody) {
       contentRequestId = crypto.randomUUID();
@@ -200,19 +209,20 @@ $('content-form').onsubmit = event => {
       renderContentJob(job);
       startContentPolling();
       await loadContentLibrary();
-      const balance = await api('/api/ai/wallet');
-      $('content-balance').textContent = 'Kredit AI ' + Number(balance.balance).toLocaleString('id-ID');
+      await showContentBalance();
     } finally {
       updateContentEstimate();
     }
   });
 };
+const contentImageFiles = job => job.results.filter(r => r.kind === 'image').flatMap(r => r.files);
 function renderContentJob(job) {
   $('content-job-state').textContent = contentStates[job.status] ?? job.status;
   const pending = ['queued', 'running'].includes(job.status);
   $('content-job-info').textContent = pending
     ? (contentStages[job.stage] ?? 'Sedang diproses…')
-    : (job.error ?? job.results.length + ' gambar tersimpan · ' + job.charged.toLocaleString('id-ID') + ' kredit');
+    : (job.error ??
+      contentImageFiles(job).length + ' gambar tersimpan · ' + job.charged.toLocaleString('id-ID') + ' kredit');
   $('content-retry').hidden = !['failed', 'interrupted'].includes(job.status);
   if (pending) {
     const placeholder = element('div', 'content-placeholder is-generating');
@@ -222,50 +232,62 @@ function renderContentJob(job) {
       element('p', '', 'Anda boleh berpindah halaman. Hasil akan tersimpan di pustaka.'),
     );
     $('content-results').replaceChildren(placeholder);
-  } else $('content-results').replaceChildren(...job.results.map(result => contentImageCard(result, job)));
+  } else
+    $('content-results').replaceChildren(
+      ...job.results.flatMap(result =>
+        result.kind === 'image'
+          ? result.files.map(file => contentImageCard(file, job, result.label))
+          : [contentTextCard(result)],
+      ),
+    );
 }
-function contentImageCard(result, job) {
+function contentTextCard(result) {
+  const card = element('div', 'content-text-card');
+  const copy = button('Salin', async () => {
+    await navigator.clipboard.writeText(result.text);
+    $('message').textContent = result.label + ' disalin.';
+  });
+  copy.className = 'secondary';
+  card.append(element('strong', '', result.label), element('p', '', result.text), copy);
+  return card;
+}
+function contentImageCard(file, job, label) {
   const card = element('div', 'content-image-card'),
     image = document.createElement('img');
-  image.src = result.url;
-  image.alt = job.brief;
+  image.src = file.url;
+  image.alt = label;
   image.loading = 'lazy';
   const actions = element('div', 'content-image-actions'),
     download = element('a', 'button secondary', 'Unduh');
-  download.href = result.url + '?download=1';
+  download.href = file.url + '?download=1';
   download.prepend(contentActionIcon('download'));
-  const reference = button('Jadikan referensi', () => reuseContentJob(job, result.id));
+  const reference = button('Jadikan referensi', () => reuseContentJob(job, file.id));
   reference.className = 'secondary';
   reference.prepend(contentActionIcon('reference'));
   actions.append(download, reference);
   const footer = element('div', 'content-image-footer');
-  footer.append(contentInstagramButton(result), actions);
+  footer.append(contentInstagramButton(file), actions);
   card.append(image, footer);
   return card;
 }
+// Memuat isian pekerjaan ke formulir; gambar hasil yang dipilih menjadi referensi di isian gambar pertama.
 async function reuseContentJob(job, reference) {
   if (!contentProfiles.some(p => p.id === job.profile_id))
-    throw Error('Profil asal sudah tidak tersedia. Pilih profil generator lain.');
+    throw Error('Profil asal sudah tidak tersedia. Pilih jenis konten lain.');
   $('content-profile').value = job.profile_id;
-  renderContentProfile();
-  $('content-brief').value = job.brief;
-  for (const field of $('content-custom-fields').querySelectorAll('[name]'))
-    field.value = job.fields?.[field.name] ?? '';
-  const ratio = [...$('content-ratios').querySelectorAll('input')].find(el => el.value === job.ratio);
-  if (ratio) ratio.checked = true;
-  contentReferences = [];
+  contentImages = {};
   const profile = selectedContentProfile();
-  if (profile?.references && contentCapabilities.references)
-    contentReferences = (reference ? [reference] : (job.references ?? [])).map(id => ({
-      id,
-      url: '/api/content/files/' + id,
-    }));
-  else if (reference)
-    $('message').textContent = 'Ditambahkan sebagai brief; provider ini belum mendukung referensi untuk variasi.';
-  renderContentReferences();
+  for (const field of profile.fields.filter(f => f.type === 'image'))
+    if (job.values[field.id])
+      contentImages[field.id] = { id: job.values[field.id], url: contentFileUrl(job.values[field.id]) };
+  const target = profile.fields.find(f => f.type === 'image');
+  if (reference && target) contentImages[target.id] = { id: reference, url: contentFileUrl(reference) };
+  else if (reference) $('message').textContent = 'Jenis konten ini tidak punya isian gambar referensi.';
+  renderContentProfile();
+  for (const control of $('content-fields').querySelectorAll('[name]')) control.value = job.values[control.name] ?? '';
   contentRequestId = '';
   contentTab('create');
-  $('content-brief').focus();
+  $('content-fields').querySelector('[name]')?.focus();
 }
 $('content-retry').onclick = () => run(() => reuseContentJob(contentSelectedJob));
 function contentTab(tab) {
@@ -292,15 +314,16 @@ async function loadContentLibrary() {
         element('h3', '', job.profile_name),
         element('span', 'badge', contentStates[job.status] ?? job.status),
       );
-      if (job.results[0]) {
+      const first = contentImageFiles(job)[0];
+      if (first) {
         const image = document.createElement('img');
-        image.src = job.results[0].url;
-        image.alt = job.brief;
+        image.src = first.url;
+        image.alt = job.profile_name;
         image.loading = 'lazy';
         card.append(image);
       }
       card.append(
-        element('p', '', job.brief),
+        element('p', '', job.summary.split('\n')[0]),
         element(
           'small',
           'content-helper',
@@ -318,7 +341,7 @@ async function loadContentLibrary() {
           contentTab('create');
           startContentPolling();
         }),
-        button(['failed', 'interrupted'].includes(job.status) ? 'Coba lagi' : 'Gunakan brief', () =>
+        button(['failed', 'interrupted'].includes(job.status) ? 'Coba lagi' : 'Gunakan isian', () =>
           reuseContentJob(job),
         ),
       );
@@ -328,7 +351,7 @@ async function loadContentLibrary() {
   );
   if (!response.items.length)
     $('content-library-items').append(
-      element('p', 'empty', 'Belum ada konten. Buat gambar pertama Anda di tab Buat gambar.'),
+      element('p', 'empty', 'Belum ada konten. Buat konten pertama Anda di tab Buat konten.'),
     );
 }
 $('content-prev').onclick = () =>
@@ -348,8 +371,7 @@ async function refreshContentJob() {
   contentSelectedJob = await api('/api/content/jobs/' + contentSelectedJob.id);
   renderContentJob(contentSelectedJob);
   if (old !== contentSelectedJob.status && !['queued', 'running'].includes(contentSelectedJob.status)) {
-    const balance = await api('/api/ai/wallet');
-    $('content-balance').textContent = 'Kredit AI ' + Number(balance.balance).toLocaleString('id-ID');
+    await showContentBalance();
     await loadContentLibrary();
   }
 }
@@ -411,15 +433,14 @@ form('content-brand-form', async data => {
   $('content-brand-dialog').close();
   $('message').textContent = 'Identitas brand tersimpan.';
 });
-$('content-reference-picker').onclick = () =>
-  run(async () => {
+// Memilih gambar dari pustaka referensi akun; onPick menerima {id, url}.
+function pickContentReference(onPick) {
+  return run(async () => {
     const references = await api('/api/content/references');
     $('content-reference-library').replaceChildren(
       ...references.map(ref => {
         const choice = button('Pilih', () => {
-          if (contentReferences.length >= 4) throw Error('Maksimum empat referensi.');
-          if (!contentReferences.some(r => r.id === ref.id)) contentReferences.push(ref);
-          renderContentReferences();
+          onPick(ref);
           $('content-reference-dialog').close();
         });
         const image = document.createElement('img');
@@ -432,3 +453,4 @@ $('content-reference-picker').onclick = () =>
     if (!references.length) $('content-reference-library').append(element('p', '', 'Belum ada referensi tersimpan.'));
     $('content-reference-dialog').showModal();
   });
+}

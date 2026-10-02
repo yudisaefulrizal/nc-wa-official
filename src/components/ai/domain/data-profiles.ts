@@ -137,7 +137,12 @@ export async function createDataProfile(svc: AIService, account: string, body: u
         from = rows[0];
         if (!from) throw new ApiError(404, 'data_profile_not_found', 'Data profil tidak ditemukan');
         type = String(from.profile_type);
-      } else type = (await profileDefinition(input.profile_type)).id;
+      } else {
+        const definition = await profileDefinition(input.profile_type);
+        if (definition.role !== 'chat')
+          throw new ApiError(409, 'profile_not_chat', 'Profil Konten dipakai di menu Konten, bukan di sesi chat.');
+        type = definition.id;
+      }
       if (!(await enabledProfiles()).has(type))
         throw new ApiError(409, 'profile_disabled', 'Profil AI ini sedang dinonaktifkan admin.');
       const [taken] = await dataProfilesSql.lockByName(c, [account, name]);

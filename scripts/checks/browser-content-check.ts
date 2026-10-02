@@ -1,5 +1,5 @@
-// Pemeriksaan browser Konten dan builder generator di 1280/390 px; memakai provider gambar tiruan.
-// API dijalankan nyata di database terisolasi, termasuk unggah privat, kredit dan kontrol akses owner.
+// Pemeriksaan browser profil Konten di 1280/390 px: owner membuat dan menerbitkan profil di Editor profil, klien memakainya
+// di menu Konten (formulir dinamis, brand, hasil, Instagram, pustaka). Provider gambar tiruan; API dan database nyata.
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
@@ -15,13 +15,7 @@ import { db } from '../../src/libraries/db.js';
 import { digest } from '../../src/libraries/security.js';
 import { ai } from '../../src/components/ai/domain/service.js';
 import { modelTiers } from '../../src/components/ai/domain/pipeline/models.js';
-import {
-  blankImageDefinition,
-  createImageProfile,
-  saveImageProfile,
-  enableImageProfile,
-} from '../../src/components/ai/domain/image-profiles.js';
-import { processNextImage } from '../../src/components/ai/domain/image-jobs.js';
+import { processNextContent } from '../../src/components/ai/domain/content-jobs.js';
 import { createGateway } from '../../src/http/gateway.js';
 import { removeContent } from '../../src/components/ai/data-access/content-file-storage.js';
 import { screenshots } from './screenshots.js';
@@ -70,6 +64,7 @@ process.env.INSTAGRAM_GRAPH_URL = 'http://127.0.0.1:' + (meta.address() as net.A
 process.env.PAYMENT_ENCRYPTION_KEY ??= 'a'.repeat(64);
 const server = createApp(gateway).listen(port, '127.0.0.1');
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+let imageProvider: Awaited<ReturnType<typeof ai.saveProviderProfile>>;
 const providers: string[] = [],
   profiles: string[] = [];
 let sequence = 20;
@@ -113,7 +108,7 @@ try {
     model_decision: 'fixture',
   });
   providers.push(textProvider.id);
-  const imageProvider = await ai.saveProviderProfile({
+  imageProvider = await ai.saveProviderProfile({
     name: 'Gambar fixture',
     provider: 'compatible',
     endpoint: 'https://example.com/v1/chat/completions',
@@ -126,14 +121,6 @@ try {
     ...Object.fromEntries(modelTiers.map(tier => [tier, { profileId: textProvider.id }])),
     image: { profileId: imageProvider.id },
   });
-  const initial = await createImageProfile(owner, {
-    ...blankImageDefinition(),
-    name: 'Foto Produk',
-    description: 'Visual produk sesuai identitas brand.',
-  });
-  profiles.push(initial.id);
-  await saveImageProfile(owner, initial.id, { revision: initial.revision }, true);
-  await enableImageProfile(owner, initial.id, true);
   for (const id of [client, owner]) {
     await ai.wallet(id);
     await db.execute('UPDATE ai_wallets SET balance=5000 WHERE account_id=?', [id]);
@@ -163,13 +150,98 @@ try {
     await page.goto(origin + path);
     return { page, context, errors };
   };
+  // Owner: membuat profil Konten di Editor profil, menerbitkan, lalu menyalakannya untuk klien.
+  let created = '';
+  for (const width of [1280, 390]) {
+    const { page, context, errors } = await open(
+      ownerToken,
+      width === 1280 ? '/dashboard/admin/ai-builder' : '/dashboard/admin/ai-builder?profile=' + created,
+      width,
+    );
+    if (width === 1280) {
+      await page.locator('#create-content').click();
+      await page.waitForSelector('#editor:not([hidden])');
+      created = new URL(page.url()).searchParams.get('profile')!;
+      profiles.push(created);
+      assert.equal(await page.locator('#role-chip').textContent(), 'Konten');
+      const inspector = page.locator('#inspector');
+      // Formulir: tambah isian teks dan isian gambar.
+      await page.locator('[data-node="input"] .node-heading').click();
+      await inspector.getByRole('button', { name: '＋ Isian' }).click();
+      await inspector.getByLabel('Label untuk klien', { exact: true }).nth(1).fill('Teks promosi');
+      await inspector.getByRole('button', { name: '＋ Isian' }).click();
+      await inspector.getByLabel('Label untuk klien', { exact: true }).nth(2).fill('Foto');
+      await inspector.getByLabel('Jenis', { exact: true }).nth(2).selectOption('image');
+      // Buat gambar: prompt dari isian, referensi dari isian gambar, dua gambar.
+      await page.locator('[data-node="gambar"] .node-heading').click();
+      await inspector
+        .getByLabel('Prompt gambar', { exact: true })
+        .fill('{{input.brief}} dengan teks {{input.teks_promosi}}');
+      await inspector.getByLabel('Gambar referensi (opsional)', { exact: true }).fill('{{input.foto}}');
+      await inspector.getByLabel('Jumlah gambar (1–3)', { exact: true }).fill('2');
+      await page.locator('#dirty').filter({ hasText: 'Tersimpan' }).waitFor();
+      // Peran bisa diganti selagi draft, dan terkunci setelah terbit.
+      await page.locator('[data-tab=settings]').click();
+      await page.locator('#profile-name').fill('Poster Promosi');
+      await page.locator('#profile-description').fill('Poster dari brief dan foto produk.');
+      assert.equal(
+        await page
+          .locator('.role-card[aria-pressed=true]')
+          .textContent()
+          .then(t => t?.includes('Konten')),
+        true,
+      );
+      await page.locator('#dirty').filter({ hasText: 'Tersimpan' }).waitFor();
+      await page.locator('#publish').click();
+      await page.waitForFunction(() => document.getElementById('revision')?.textContent?.startsWith('Terbit v'));
+      assert.equal(await page.locator('.role-card:not([aria-pressed=true])').isDisabled(), true);
+      await page.screenshot({ path: join(screenshots, 'content-role-' + width + '.png'), fullPage: true });
+      await page.locator('[data-tab=flow]').click();
+      await page.locator('#test-toggle').click();
+      await page.locator('#test-fields [name=brief]').fill('Poster kopi susu');
+      await page.locator('#test-fields [name=teks_promosi]').fill('Promo Jumat');
+      await page.locator('#test-fields [name=foto]').fill('kopi.jpg');
+      await page.locator('#run-test').click();
+      await page.waitForSelector('#chat .bubble.assistant.media', { timeout: 20000 });
+      assert.match(
+        (await page.locator('#chat .bubble.assistant.media').first().textContent()) ?? '',
+        /gambar-simulasi-1\.jpg/,
+      );
+    } else await page.waitForSelector('#editor:not([hidden])');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: join(screenshots, 'content-builder-' + width + '.png'), fullPage: true });
+    // Profil AI: nyalakan untuk klien sekali; tampil sebagai Konten tanpa tab Generator Gambar.
+    await page.goto(origin + '/dashboard/admin/profiles');
+    await page.waitForSelector('#admin-profiles-list tbody tr');
+    assert.equal(await page.getByText('Generator Gambar').count(), 0);
+    const row = page.locator('#admin-profiles-list tbody tr', { hasText: 'Poster Promosi' });
+    assert.match((await row.textContent()) ?? '', /Konten/);
+    if (width === 1280) {
+      await row.locator('label.admin-profile-toggle').click();
+      await row.getByText('Aktif', { exact: true }).waitFor();
+    }
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: join(screenshots, 'content-profiles-' + width + '.png'), fullPage: true });
+    await page.goto(origin + '/dashboard/admin/ai');
+    await page.getByRole('button', { name: 'Model', exact: true }).click();
+    await page.waitForSelector('select[name=imageProfile]');
+    assert.equal(await page.locator('select[name=imageProfile]').inputValue(), imageProvider.id);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Klien: formulir dari profil, brand, hasil, Instagram, dan pustaka.
   for (const width of [1280, 390]) {
     const { page, context, errors } = await open(clientToken, '/dashboard/konten', width);
-    await page.waitForSelector('#content-profile option[value="' + initial.id + '"]', { state: 'attached' });
-    await page.locator('#content-brief').fill('Kopi susu botolan di atas meja kayu, cahaya pagi.');
-    await page.locator('#content-count').selectOption('2');
-    await page.locator('#content-upload').setInputFiles({ name: 'kopi.png', mimeType: 'image/png', buffer: png });
-    await page.waitForSelector('#content-references img');
+    await page.waitForSelector('#content-profile option[value="' + created + '"]', { state: 'attached' });
+    await page.locator('#content-profile').selectOption(created);
+    assert.equal(await page.locator('#content-fields [name=brief]').count(), 1);
+    await page.locator('#content-fields [name=brief]').fill('Kopi susu botolan di atas meja kayu, cahaya pagi.');
+    await page.locator('#content-fields [name=teks_promosi]').fill('Promo Jumat');
+    await page
+      .locator('#content-fields input[type=file]')
+      .setInputFiles({ name: 'kopi.png', mimeType: 'image/png', buffer: png });
+    await page.waitForSelector('#content-fields .content-reference-thumb img');
     await page.locator('#content-brand-open').click();
     await page.locator('#content-brand-form [name=name]').fill('Kopi Nusantara');
     await page.locator('#content-brand-form [name=colors]').fill('Hijau dan krem');
@@ -183,11 +255,12 @@ try {
     await page.locator('#content-generate').click();
     const result = await response;
     assert.equal(result.status(), 202);
-    const job = await result.json();
-    assert.equal(job.reserved, 50);
-    await processNextImage({
-      transport: async (_config, input) => {
+    assert.equal((await result.json()).status, 'queued');
+    await processNextContent({
+      imageTransport: async (_config, input) => {
+        // Foto dari formulir dan logo brand ikut sebagai referensi; prompt memuat isian dan identitas brand.
         assert.equal(input.references.length, 2);
+        assert.match(input.prompt, /Promo Jumat/);
         assert.match(input.prompt, /Kopi Nusantara/);
         return [png, png];
       },
@@ -198,7 +271,7 @@ try {
       { timeout: 15000 },
     );
     assert.equal(await page.locator('#content-results img').count(), 2);
-    const access = await page.evaluate(async () => ({ admin: (await fetch('/api/admin/ai/image-profiles')).status }));
+    const access = await page.evaluate(async () => ({ admin: (await fetch('/api/admin/ai/builder')).status }));
     assert.equal(access.admin, 403);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -272,7 +345,7 @@ try {
       await page.unroute('**/api/instagram/official');
     }
     await page.getByRole('button', { name: 'Jadikan referensi', exact: true }).first().click();
-    assert.equal(await page.locator('#content-references img').count(), 1);
+    assert.equal(await page.locator('#content-fields .content-reference-thumb img').count(), 1);
     await page.locator('[data-content-tab=library]').click();
     await page.waitForSelector('.content-library-card');
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -280,72 +353,8 @@ try {
     assert.deepEqual(errors, []);
     await context.close();
   }
-  let created = '';
-  for (const width of [1280, 390]) {
-    const { page, context, errors } = await open(ownerToken, '/dashboard/admin/profiles', width);
-    await page.locator('#image-profile-generator-tab').click();
-    await page.waitForSelector('.image-profile-card');
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: join(screenshots, 'image-profiles-' + width + '.png'), fullPage: true });
-    if (width === 1280) {
-      await page.getByRole('button', { name: 'Buat profil', exact: true }).click();
-      await page.getByRole('link', { name: 'Profil Generator Gambar' }).click();
-      await page.locator('#generator-create-name').fill('Poster Promosi');
-      await page.locator('#generator-create-form button').click();
-      await page.waitForSelector('#generator-editor:not([hidden])');
-      created = new URL(page.url()).searchParams.get('profile')!;
-      profiles.push(created);
-      await page.locator('[data-tab=form]').click();
-      await page.locator('#generator-add-field').click();
-      await page.locator('.field-editor input').nth(0).fill('Teks promosi');
-      await page.locator('.field-editor input').nth(1).fill('teks_promosi');
-      await page.locator('.field-extra input[type=checkbox]').check();
-      await page.locator('#generator-save').click();
-      await page.waitForFunction(() => document.getElementById('generator-save-state')?.textContent === 'Tersimpan');
-      await page.locator('[data-tab=flow]').click();
-      await page.locator('[data-node=prompt]').click();
-      await page
-        .locator('[data-definition=prompt]')
-        .fill('Poster dengan teks {{fields.teks_promosi}}. Brief: {{brief}}.');
-      await page.locator('#generator-save').click();
-      await page.waitForFunction(() => document.getElementById('generator-save-state')?.textContent === 'Tersimpan');
-      await page.locator('#generator-publish').click();
-      await page.waitForFunction(() => document.getElementById('generator-status')?.textContent === 'Terbit');
-      await page.locator('[data-tab=settings]').click();
-      await page.locator('#generator-enable').check();
-      await page.waitForFunction(() => document.getElementById('generator-status')?.textContent === 'Aktif');
-    } else await page.goto(origin + '/dashboard/admin/image-builder?profile=' + created);
-    await page.waitForSelector('#generator-editor:not([hidden])');
-    await page.locator('[data-tab=flow]').click();
-    await page.locator('[data-node=image]').click();
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: join(screenshots, 'image-builder-' + width + '.png'), fullPage: true });
-    await page.locator('#generator-test').click();
-    await page.locator('#generator-test-brief').fill('Poster promo kopi susu.');
-    await page.locator('#generator-test-fields input').fill('Promo Jumat');
-    const response = page.waitForResponse(r => r.url().endsWith('/run'));
-    await page.locator('#generator-test-submit').click();
-    assert.equal((await response).status(), 202);
-    await processNextImage({ transport: async () => [png] });
-    await page.waitForSelector('#generator-test-results img', { timeout: 15000 });
-    await page.locator('#generator-test-close').click();
-    await page.goto(origin + '/dashboard/admin/ai');
-    await page.getByRole('button', { name: 'Model', exact: true }).click();
-    await page.waitForSelector('select[name=imageProfile]');
-    assert.equal(await page.locator('select[name=imageProfile]').inputValue(), imageProvider.id);
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: join(screenshots, 'image-model-settings-' + width + '.png'), fullPage: true });
-    assert.deepEqual(errors, []);
-    await context.close();
-  }
-  const { page, context } = await open(clientToken, '/dashboard/konten', 1280);
-  await page.waitForSelector('#content-profile option[value="' + created + '"]', { state: 'attached' });
-  await page.locator('#content-profile').selectOption(created);
-  assert.equal(await page.locator('#content-custom-fields input[name=teks_promosi]').count(), 1);
-  await context.close();
   console.log(
-    'Konten, posting Instagram, builder generator, tier gambar, uji draft dan akses owner lulus pada desktop/ponsel. Screenshot: ' +
+    'Profil Konten (Editor profil, Profil AI, menu Konten), brand, posting Instagram, tier gambar dan akses owner lulus pada desktop/ponsel. Screenshot: ' +
       screenshots,
   );
 } finally {
@@ -359,7 +368,10 @@ try {
   ]);
   for (const file of files) await removeContent(file.account_id, file.id);
   for (const id of [client, owner]) await db.execute('DELETE FROM accounts WHERE id=?', [id]);
-  for (const id of profiles) await db.execute('DELETE FROM ai_image_profiles WHERE id=?', [id]);
+  for (const id of profiles) {
+    await db.execute('DELETE FROM ai_graph_profiles WHERE id=?', [id]);
+    await db.execute('DELETE FROM ai_profile_types WHERE id=?', [id]);
+  }
   for (const id of providers) {
     await db.execute('DELETE FROM ai_provider_routes WHERE profile_id=?', [id]);
     await db.execute('DELETE FROM ai_provider_profiles WHERE id=?', [id]);

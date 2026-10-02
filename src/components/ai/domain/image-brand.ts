@@ -3,11 +3,11 @@ import { db } from '../../../libraries/db.js';
 import { record } from '../../../libraries/validation.js';
 import { fail, text } from './input-validation.js';
 import { contentFile } from './content-files.js';
-import { decodeImageJson } from './image-profiles.js';
 import * as brandsSql from '../data-access/image-brands-queries.js';
+const decode = (v: unknown) => (typeof v === 'string' ? JSON.parse(v) : v);
 export async function imageBrand(account: string) {
   const [rows] = await brandsSql.find(db, [account]);
-  return rows[0] ? record(decodeImageJson(rows[0].definition)) : { name: '', description: '', colors: '', logo: '' };
+  return rows[0] ? record(decode(rows[0].definition)) : { name: '', description: '', colors: '', logo: '' };
 }
 export async function saveImageBrand(account: string, value: unknown) {
   const input = record(value);

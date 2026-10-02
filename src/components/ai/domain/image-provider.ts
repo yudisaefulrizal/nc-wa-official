@@ -10,6 +10,7 @@ import { record } from '../../../libraries/validation.js';
 import { fail, integer, text } from './input-validation.js';
 import { db } from '../../../libraries/db.js';
 import * as providersSql from '../data-access/provider-profiles-queries.js';
+import type { AIConfig } from './provider.js';
 import type { AIService } from './service.js';
 
 export const imageRatios = ['1:1', '4:5', '9:16'] as const;
@@ -70,8 +71,10 @@ export function parseImageOptions(value: unknown): ImageOptions {
     sizes: result,
   };
 }
-export async function imageConnection(svc: AIService): Promise<ImageConnection> {
-  const profile = (await svc.config()).tier_profiles?.image;
+export const imageConnection = async (svc: AIService) => imageConnectionFrom(await svc.config());
+// Dipakai juga oleh node Buat gambar, yang sudah memegang konfigurasi AI dari runtime.
+export async function imageConnectionFrom(config: AIConfig): Promise<ImageConnection> {
+  const profile = config.tier_profiles?.image;
   if (!profile?.id || !profile.model || !profile.secret)
     throw new ApiError(409, 'image_not_configured', 'Owner belum mengatur tier Model Gambar.');
   const [rows] = await providersSql.findImageConnection(db, [profile.id]);

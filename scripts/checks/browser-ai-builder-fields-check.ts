@@ -158,6 +158,23 @@ try {
     await jsonIssue.waitFor({ state: 'attached' });
     await inspector.getByLabel('Template JSON', { exact: true }).fill('{"pesan": "{{input.message}}"}');
     await jsonIssue.waitFor({ state: 'detached' });
+    // Buat gambar: prompt, rasio, jumlah, tanpa brand, referensi; port Berhasil/Gagal wajib tersambung.
+    await page.locator('#add-node').click();
+    await page.locator('#node-types').getByRole('button', { name: 'Buat gambar', exact: true }).click();
+    await inspector.getByLabel('Prompt gambar', { exact: true }).fill('Poster {{input.message}}');
+    await inspector.getByLabel('Rasio', { exact: true }).selectOption('9:16');
+    await inspector.getByLabel('Jumlah gambar (1–3)', { exact: true }).fill('3');
+    await inspector.getByLabel('Pakai identitas brand akun', { exact: true }).uncheck();
+    await inspector.getByLabel('Gambar referensi (opsional)', { exact: true }).fill('{{input.message}}');
+    await page
+      .locator('#issues-list')
+      .getByText(/port created/)
+      .waitFor({ state: 'attached' });
+    await page
+      .locator('#issues-list')
+      .getByText(/port failed/)
+      .waitFor({ state: 'attached' });
+    await page.screenshot({ path: join(screenshots, 'ai-builder-image-' + width + '.png'), fullPage: true });
     await page.locator('#dirty').filter({ hasText: 'Tersimpan' }).waitFor();
     await page.reload();
     await page.locator('#editor').waitFor();
@@ -185,6 +202,11 @@ try {
     const md = definition.nodes.find((n: any) => n.type === 'file_md');
     assert.deepEqual([md.filename, md.value], ['artikel-{{system.today}}', '# Artikel\n\n{{input.message}}']);
     assert.equal(definition.nodes.find((n: any) => n.type === 'file_json').value, '{"pesan": "{{input.message}}"}');
+    const image = definition.nodes.find((n: any) => n.type === 'image_gen');
+    assert.deepEqual(
+      [image.value, image.image_ratio, image.image_count, image.image_brand, image.image_refs],
+      ['Poster {{input.message}}', '9:16', 3, false, '{{input.message}}'],
+    );
     const produkDef = definition.collections.find((c: any) => c.id === 'produk');
     assert.deepEqual(produkDef.fields.find((f: any) => f.id === 'kategori').default, ['Reguler']);
     assert.equal(produkDef.fields.find((f: any) => f.id === 'kontak').unique, true);
@@ -255,7 +277,7 @@ try {
     await context.close();
   }
   console.log(
-    'Tahap 2–4: Ekstrak, Set / Hitung, Terima media, Kirim media, Buat file, tipe field baru, nilai bawaan, unik, dan unggah file lulus pada 1280 dan 390px.',
+    'Tahap 2–4: Ekstrak, Set / Hitung, Terima media, Kirim media, Buat file, Buat gambar, tipe field baru, nilai bawaan, unik, dan unggah file lulus pada 1280 dan 390px.',
   );
 } finally {
   await browser?.close();

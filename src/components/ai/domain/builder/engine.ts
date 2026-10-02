@@ -34,6 +34,17 @@ import {
 } from './media.js';
 import { recordFileInfo, saveGeneratedFile } from './record-files.js';
 import { buildFile, isFileNode, type FileWriter } from './generated-files.js';
+import { contentResults } from './content-results.js';
+import {
+  contentLibraryImages,
+  dataProfileImages,
+  databaseImages,
+  imageNodeTimeoutMs,
+  maxPromptChars,
+  ImageNodeError,
+  type ImageFailure,
+  type ImageMaker,
+} from './image-generation.js';
 export type GraphTool = (node: GraphNode, value: unknown, key: string) => Promise<unknown>;
 export function lookup(path: string, state: Record<string, unknown>): unknown {
   let v: unknown = state;
@@ -100,6 +111,8 @@ function databaseRecords(scope: ToolContext, d: GraphDefinition): RecordAdapter 
 export const runtimeLimits = {
   modelCalls: 20,
   seconds: 120,
+  // Pekerjaan profil Konten berjalan di latar belakang, jadi lebih longgar dari balasan chat.
+  contentSeconds: 300,
   steps: 60,
   resultChars: 60000,
   agentToolTurns: 5,
@@ -148,6 +161,11 @@ export async function runGraph(
   resolveMedia: MediaResolver = databaseMedia(scope),
   writeFile: FileWriter = databaseFiles(scope),
   routerRecords?: Pick<RecordAdapter, 'search'>,
+  makeImage: ImageMaker = databaseImages(
+    scope,
+    config,
+    d.role === 'content' ? contentLibraryImages(scope.account) : dataProfileImages(scope),
+  ),
 ) {
   const media: QueuedMedia[] = [];
   const routerTables = new Map<string, RouterTable>();
@@ -190,7 +208,7 @@ export async function runGraph(
     if (contextResource && contextResource !== resource)
       config.onTrace?.({ node: contextResource.id, state: 'read', output: { consumer: n.id, context: summary } });
     return {
-      input: { message: input, ...memory, task: taskRun ? structuredClone(taskRun.task) : null },
+      input: { ...scope.form, message: input, ...memory, task: taskRun ? structuredClone(taskRun.task) : null },
       nodes: {
         ...outputs,
         ...(resource ? { [resource.id]: memory } : {}),
@@ -207,10 +225,11 @@ export async function runGraph(
     agent = '',
     calls = 0;
   config.graph_context = previousContext;
+  const seconds = d.role === 'content' ? runtimeLimits.contentSeconds : runtimeLimits.seconds;
   config.signal = config.signal
-    ? AbortSignal.any([config.signal, AbortSignal.timeout(120000)])
-    : AbortSignal.timeout(120000);
-  const deadline = Date.now() + runtimeLimits.seconds * 1000;
+    ? AbortSignal.any([config.signal, AbortSignal.timeout(seconds * 1000)])
+    : AbortSignal.timeout(seconds * 1000);
+  const deadline = Date.now() + seconds * 1000;
   const guard = () => {
     config.signal?.throwIfAborted();
     if (Date.now() > deadline || calls > runtimeLimits.modelCalls) throw Error('ai_retry_limit');
@@ -788,6 +807,35 @@ export async function runGraph(
           files.push({ name: item.filename, type: item.type });
         }
         result = { files, count: files.length, skipped };
+      } else if (n.type === 'image_gen') {
+        guard();
+        await config.checkpoint?.();
+        const prompt = interpolate(n.value, state);
+        const refs = n.image_refs?.trim() ? mediaRefs(interpolate(n.image_refs, state)) : [];
+        // Waktu node dibatasi sisa waktu alur, disisakan 10 detik untuk node sesudahnya.
+        const available = Math.min(imageNodeTimeoutMs(d.role), deadline - Date.now() - 10000);
+        let reason: ImageFailure | null = null,
+          files: string[] = [];
+        if (available < 10000) reason = 'waktu';
+        else
+          try {
+            const signal = AbortSignal.any([config.signal!, AbortSignal.timeout(available)]);
+            files = (
+              await makeImage({
+                prompt: (typeof prompt === 'string' ? prompt : JSON.stringify(prompt)).slice(0, maxPromptChars),
+                ratio: n.image_ratio ?? '1:1',
+                count: n.image_count ?? 1,
+                brand: n.image_brand ?? true,
+                references: refs.filter(fileRef),
+                signal,
+              })
+            ).files;
+          } catch (error) {
+            if (config.signal?.aborted || (error instanceof Error && error.message === 'ai_cancelled')) throw error;
+            reason = error instanceof ImageNodeError ? error.reason : 'gagal';
+          }
+        port = reason ? 'failed' : 'created';
+        result = { file: files[0] ?? null, files, count: files.length, reason };
       } else if (isFileNode(n)) {
         result = await writeFile(buildFile(n, v => interpolate(v, state), n.label));
       } else if (n.type === 'receive') {
@@ -825,6 +873,10 @@ export async function runGraph(
         // Hanya Context yang menulis ringkasan, ke Memori konteks (atau Shared Memory pada profil cara lama).
         if (contextSource(n)) config.graph_context = value;
         result = { context: value };
+      } else if (n.type === 'output' && n.results) {
+        const results = contentResults(n.results, v => interpolate(v, state), maxWords);
+        emit(n.id, 'done', { results });
+        return { answer: '', agent: agent || n.id, results };
       } else if (n.type === 'output') {
         const value = n.value ? interpolate(n.value, state) : lastAnswer;
         const answer = typeof value === 'string' ? value : JSON.stringify(value);

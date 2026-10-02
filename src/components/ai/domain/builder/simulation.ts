@@ -10,6 +10,8 @@ import { keywords, queryMemory, sumMemory, filterGroup, type StoredRecord } from
 import { runRecordTool, type RecordAdapter } from './record-tools.js';
 import { previewMedia } from './media.js';
 import { previewFiles } from './generated-files.js';
+import { readForm } from './content-form.js';
+import { previewImages } from './image-generation.js';
 import { sampleIdKey } from './samples.js';
 import { maxContextChars } from '../pipeline/context.js';
 // Nomor pelanggan tiruan untuk koleksi milik pelanggan di simulasi.
@@ -24,8 +26,13 @@ export async function simulate(
   transport: AITransport = ai.transport,
 ) {
   const body = record(value),
-    d = parseDefinition(body.definition),
-    message = text(body.message, 4000);
+    d = parseDefinition(body.definition);
+  // Profil Konten: formulir menggantikan pesan pelanggan; isiannya dibaca sebagai {{input.<id>}}.
+  const content =
+    d.role === 'content'
+      ? await readForm(d.nodes.find(n => n.type === 'input')?.form ?? [], record(body.values ?? {}), async () => {})
+      : null;
+  const message = content ? content.summary : text(body.message, 4000);
   // Lampiran contoh untuk node Terima media; tidak ada file sungguhan, nama file dipakai sebagai nilainya.
   let incomingMedia;
   if (body.media !== undefined && body.media !== null) {
@@ -173,6 +180,7 @@ export async function simulate(
       customerName: 'Pelanggan simulasi',
       serviceName: 'Data profil simulasi',
       incomingMedia,
+      form: content?.values,
       requestId: randomUUID(),
       fallbackEnabled: true,
     },
@@ -182,6 +190,7 @@ export async function simulate(
     previewMedia,
     previewFiles,
     memoryRecords(records),
+    previewImages,
   );
   emit({
     node: 'output',

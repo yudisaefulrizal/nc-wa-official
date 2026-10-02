@@ -1,11 +1,12 @@
-// File gambar disimpan privat di storage/files/content/<akun>/, selalu PNG tanpa metadata asal.
+// File gambar disimpan privat di storage/files/content/<akun>/<id> tanpa metadata asal: hasil generator JPEG, referensi PNG
+// (lihat contentMimetype). Jenis file mengikuti kolom kind di database, bukan ekstensi.
 import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { storageRoot } from '../../../libraries/storage.js';
 const valid = (value: string) => /^[0-9a-f-]{36}$/i.test(value);
 export function contentPath(account: string, id: string) {
   if (!valid(account) || !valid(id)) throw Error('invalid_content_path');
-  return join(storageRoot, 'files', 'content', account, id + '.png');
+  return join(storageRoot, 'files', 'content', account, id);
 }
 export async function writeContent(account: string, id: string, data: Buffer) {
   const path = contentPath(account, id);

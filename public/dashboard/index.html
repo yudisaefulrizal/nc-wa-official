@@ -520,71 +520,44 @@
         </section>
         <section id="konten" hidden>
           <div class="content-toolbar">
-            <p>Buat visual untuk bisnis Anda dengan profil generator AI.</p>
+            <p>Buat konten untuk bisnis Anda dengan jenis konten dari pemilik layanan.</p>
             <div>
               <span id="content-balance" class="badge"></span
               ><button type="button" id="content-brand-open" class="secondary">Identitas brand</button>
             </div>
           </div>
           <nav class="content-tabs" aria-label="Bagian konten">
-            <button type="button" data-content-tab="create" aria-pressed="true">Buat gambar</button
+            <button type="button" data-content-tab="create" aria-pressed="true">Buat konten</button
             ><button type="button" data-content-tab="library" aria-pressed="false">Pustaka konten</button>
           </nav>
           <p id="content-notice" class="ai-helper" role="status"></p>
           <div id="content-create" class="content-layout">
             <form id="content-form" class="content-card">
               <label
-                >Profil generator<select id="content-profile" required>
-                  <option value="">Pilih profil generator</option>
+                >Jenis konten<select id="content-profile" required>
+                  <option value="">Pilih jenis konten</option>
                 </select></label
               >
               <p id="content-profile-description" class="content-helper"></p>
-              <label
-                >Brief gambar<textarea
-                  id="content-brief"
-                  required
-                  maxlength="4000"
-                  rows="4"
-                  placeholder="Ceritakan gambar yang ingin dibuat, produk, suasana, dan teks yang harus muncul."
-                ></textarea>
-              </label>
-              <div id="content-custom-fields"></div>
-              <div id="content-reference-field">
-                <label for="content-upload">Referensi produk <small>PNG, JPG, WebP · maks. 10 MB</small></label>
-                <div id="content-references" class="content-references"></div>
-                <input id="content-upload" type="file" accept="image/png,image/jpeg,image/webp" multiple /><button
-                  type="button"
-                  id="content-reference-picker"
-                  class="secondary"
-                >
-                  Pilih dari pustaka
-                </button>
-              </div>
-              <fieldset>
-                <legend>Rasio gambar</legend>
-                <div id="content-ratios" class="content-choices"></div>
-              </fieldset>
-              <label
-                >Jumlah gambar<select id="content-count">
-                  <option value="1">1 gambar</option>
-                </select></label
-              >
+              <div id="content-fields"></div>
               <p id="content-estimate" class="content-helper" aria-live="polite"></p>
-              <button id="content-generate" type="submit">Buat gambar</button>
+              <button id="content-generate" type="submit">Buat konten</button>
             </form>
             <article class="content-card content-result">
               <div class="content-result-heading">
-                <h2>Hasil gambar</h2>
+                <h2>Hasil</h2>
                 <span id="content-job-state" class="badge"></span>
               </div>
-              <p id="content-job-info" role="status" aria-live="polite">Isi brief untuk membuat gambar pertama Anda.</p>
+              <p id="content-job-info" role="status" aria-live="polite">
+                Isi formulir untuk membuat konten pertama Anda.
+              </p>
               <div id="content-results" class="content-result-grid">
                 <div class="content-placeholder">
                   <span aria-hidden="true">▧</span><strong>Ruang untuk ide Anda</strong>
-                  <p>Hasil gambar akan muncul di sini dan tersimpan di pustaka.</p>
+                  <p>Hasil akan muncul di sini dan tersimpan di pustaka.</p>
                 </div>
               </div>
-              <button type="button" id="content-retry" class="secondary" hidden>Coba lagi dari brief ini</button>
+              <button type="button" id="content-retry" class="secondary" hidden>Coba lagi dari isian ini</button>
             </article>
           </div>
           <div id="content-library" hidden>
@@ -633,7 +606,7 @@
               <h2>Identitas brand</h2>
               <button type="button" data-close="content-brand-dialog" class="secondary">Tutup</button>
             </div>
-            <p>Dipakai oleh profil yang mengaktifkan Data brand.</p>
+            <p>Dipakai oleh jenis konten yang memakai identitas brand.</p>
             <form id="content-brand-form">
               <label>Nama brand<input name="name" maxlength="100" /></label
               ><label>Deskripsi<textarea name="description" maxlength="2000" rows="4"></textarea></label
@@ -2461,10 +2434,12 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
           </section>
           <section class="admin-page" id="admin-profiles" hidden>
             <p>
-              Profil adalah alur AI yang Anda buat di Editor profil: node, koleksi data, dan prompt setiap node. Di sini
-              Anda mengatur ketersediaannya untuk semua klien; profil harus diterbitkan sebelum bisa diaktifkan.
+              Profil adalah alur AI yang Anda buat di Editor profil: node, koleksi data, dan prompt setiap node. Peran
+              profil menentukan di mana klien memakainya: Asisten chat membalas pelanggan, Konten dipakai klien di menu
+              Konten. Di sini Anda mengatur ketersediaannya untuk semua klien; profil harus diterbitkan sebelum bisa
+              diaktifkan.
             </p>
-            <p><a class="button" href="/dashboard/admin/ai-builder">Buat profil · Editor alur · Impor JSON</a></p>
+            <p><a class="button" href="/dashboard/admin/ai-builder">Buat profil</a></p>
             <div id="admin-profiles-list" class="table-wrap"></div>
             <p class="ai-warning">
               Menonaktifkan profil menghentikan AI di semua sesi yang memakainya dan menyembunyikannya dari pilihan
@@ -2685,7 +2660,6 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
     <script src="/dashboard/js/pages/dokumentasi.js" defer></script>
     <script src="/dashboard/js/pages/content.js" defer></script>
     <script src="/dashboard/js/pages/content-instagram.js" defer></script>
-    <script src="/dashboard/js/pages/image-profiles.js" defer></script>
     <script src="/dashboard/js/start.js" defer></script>
   </body>
 </html>

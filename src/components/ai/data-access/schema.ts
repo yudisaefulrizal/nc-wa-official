@@ -2,7 +2,7 @@
 // disimpan karena database yang belum diperbarui masih melewatinya.
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { migrateImages } from './image-schema.js';
+import { migrateContent } from './content-schema.js';
 import { migrateGraphs } from './graph-schema.js';
 import { db } from '../../../libraries/db.js';
 import { storageRoot } from '../../../libraries/storage.js';
@@ -122,7 +122,7 @@ export async function migrateAI() {
   );
   await migrateProfiles();
   await migrateGraphs();
-  await migrateImages();
+  await migrateContent();
   await dropStaticProfiles();
 }
 

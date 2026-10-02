@@ -110,6 +110,26 @@ Node **Buat file** membuat file dari template dan variabel alur tanpa memanggil 
 
 `accept` memilih `image` dan/atau `document` (bawaan keduanya). Port **Diterima** (`received`) bila ada lampiran yang jenisnya diterima dan berhasil disimpan; **Tidak ada** (`none`) untuk pesan teks, jenis lain, atau lampiran yang terlalu besar/tidak didukung. Keluaran `file`, `filename`, `type`, `mimetype`, `caption` (bernilai null di port Tidak ada, kecuali caption). Memori dan `input.message` memakai penanda `[Gambar] keterangan` atau `[Dokumen: nama] keterangan`. Balasan tim untuk tiket fallback tetap hanya teks. Simulasi menerima lampiran contoh (`media: {filename, type}`), dan nama filenya dipakai sebagai nilai file; Uji Coba hanya teks.
 
+## Buat gambar
+
+Node **Buat gambar** (`image_gen`) membuat gambar dari prompt memakai tier Model Gambar milik owner (`builder/image-generation.ts`). Kunci: `value` (prompt dengan variabel, maksimal 4000 karakter), `image_ratio` (`1:1`, `4:5`, `9:16`), `image_count` (1–3, dibatasi kemampuan model), `image_brand` (menambahkan identitas brand akun ke prompt dan logonya sebagai referensi bila model menerima referensi), dan `image_refs` (variabel ID file gambar milik data profil, maksimal 3). Port **Berhasil** (`created`) dan **Gagal** (`failed`) wajib tersambung. Keluaran `file`, `files`, `count`, `reason` (`belum_diatur`, `kredit`, `referensi`, `prompt`, `waktu`, `gagal`, atau null).
+
+- Kredit: jumlah gambar × `creditsPerImage` tier gambar, dipesan sebelum model dipanggil (kredit paket lebih dulu), lalu gambar yang tidak jadi dikembalikan ke wadah asalnya. Pemakaian dicatat di `ai_usage` dengan `agent='image'`; baris berstatus `generating` selama berjalan, sehingga pemulihan saat start mengembalikan kredit bila server berhenti di tengah proses.
+- Hasil selalu JPEG kualitas 90 (transparansi diisi putih), disimpan sebagai file data profil seperti Buat file, sehingga `{{nodes.<id>.files}}` langsung bisa dikirim lewat Kirim media.
+- Batas waktu node 60 detik, dipersingkat bila sisa waktu alur (120 detik) kurang; di bawah 10 detik node langsung ke Gagal dengan `reason=waktu`. Pembatalan alur (dijeda atau diambil alih admin) menghentikan alur, bukan ke Gagal, dan kreditnya dikembalikan. Panggilan model tidak diulang otomatis.
+- Penyimpanan hasil lewat `ImageStore`: profil chat menyimpan JPEG sebagai file data profil, profil Konten ke Pustaka konten akun. Batas waktu node 60 detik di chat dan 240 detik di profil Konten.
+- Simulasi memakai nama file pengganti tanpa kredit. Uji Coba dan WhatsApp membuat gambar sungguhan dan memotong kredit akun.
+- Belum ada: batas gambar per percakapan atau per hari.
+
+## Peran profil dan profil Konten
+
+Graf punya `role`: `chat` (bawaan; profil lama tanpa kunci ini dibaca sebagai chat) atau `content`. Peran terkunci setelah profil diterbitkan (`role_locked`), dan profil Konten tidak bisa dipasang ke sesi chat. Profil Konten dipakai klien di menu Konten; panduan lengkap di `docs/content-profiles.md`.
+
+- **Input** membawa `form`: isian `{id, label, type, required, options}` dengan `type` `text`/`textarea`/`choice`/`image`, maksimal 12. Nilainya `{{input.<id>}}`; `{{input.message}}` berisi ringkasan isian.
+- **Output** membawa `results`: `{label, kind, value}` dengan `kind` `image` (variabel file) atau `text`, maksimal 6. Item gambar tanpa file dilewati, dan minimal satu hasil harus ada.
+- Node yang tersedia (`contentNodeTypes`): input, output, agent, router, condition, extract, compute, image_gen. Tanpa memori, data, lampiran, file, Kirim media, dan Fallback.
+- Simulasi di Editor memakai formulir profil dan gambar pengganti, tanpa kredit.
+
 ## Kirim media
 
 `value` berisi variabel yang menghasilkan ID file field File/gambar pada data profil sesi, URL HTTPS (misalnya dari koleksi yang bersumber API klien), atau daftar keduanya. Nilai kosong berarti tidak ada file. ID file milik data profil lain ditolak (`ai_media_not_found`); nilai lain yang bukan ID atau URL ditolak (`ai_media_invalid`). `caption` (opsional, boleh variabel), `send_when` (`before`/`after` jawaban teks, bawaan `before`), dan `media_as` (`auto`/`image`/`document`; otomatis memakai jenis file tersimpan, atau ekstensi URL).

@@ -12,7 +12,7 @@ export { aiRoutes } from './entry-points/routes.js';
 
 export { builderAdminRoutes, builderAccountRoutes } from './entry-points/builder-routes.js';
 
-export { imageAccountRoutes, imageAdminRoutes } from './entry-points/image-routes.js';
-export { recoverImageJobs, startImageWorker } from './domain/image-jobs.js';
+export { contentAccountRoutes, contentAdminRoutes } from './entry-points/content-routes.js';
+export { recoverContentJobs, startContentWorker } from './domain/content-jobs.js';
 
 export { contentFile } from './domain/content-files.js';

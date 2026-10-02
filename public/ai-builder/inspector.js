@@ -199,6 +199,7 @@ function renderInspector() {
   if (n.type === 'compute') renderCompute(host.appendChild(section()), n);
   if (n.type === 'media') renderMedia(host.appendChild(section()), n);
   if (n.type === 'receive') renderReceive(host.appendChild(section()), n);
+  if (n.type === 'image_gen') renderImage(host.appendChild(section()), n);
   if (n.type === 'file_json' || n.type === 'file_md') renderFile(host.appendChild(section()), n);
   if (n.type === 'context_memory') {
     const box = section();
@@ -495,7 +496,8 @@ function renderInspector() {
   if (n.type === 'data_table') renderRecordTool(host.appendChild(section()), n);
   if (n.type === 'data_text') renderTextTool(host.appendChild(section()), n);
   if (n.type === 'data_form') renderFormTool(host.appendChild(section()), n);
-  if (['output', 'fallback'].includes(n.type)) {
+  if (n.type === 'output' && isContent()) renderResults(host.appendChild(section()), n);
+  else if (['output', 'fallback'].includes(n.type)) {
     const box = section();
     box.append(
       varEditor(
@@ -508,7 +510,8 @@ function renderInspector() {
     );
     host.append(box);
   }
-  if (n.type === 'input') {
+  if (n.type === 'input' && isContent()) renderForm(host.appendChild(section()), n);
+  else if (n.type === 'input') {
     const box = section();
     box.append(el('p', 'Menyediakan input.message, input.context, dan input.history dari percakapan.', 'hint'));
     host.append(box);
@@ -593,6 +596,9 @@ function availableVariables(n) {
       'Pesan',
       ['input.message', 'input.context', 'input.history', 'input.task', 'input.task.task', 'input.task.context'],
     ],
+    ...(isContent()
+      ? [['Formulir', (state.document.nodes.find(x => x.type === 'input')?.form ?? []).map(f => 'input.' + f.id)]]
+      : []),
     ...Object.entries(contextVariables).map(([root, keys]) => [
       { system: 'Sistem', customer: 'Pelanggan', service: 'Layanan' }[root],
       keys.map(key => root + '.' + key),
@@ -624,6 +630,7 @@ function availableVariables(n) {
         'receive',
         'file_json',
         'file_md',
+        'image_gen',
       ].includes(x.type) &&
       !isDataNode(x)
     )
@@ -645,11 +652,13 @@ function availableVariables(n) {
                   ? ['files', 'count', 'skipped']
                   : x.type === 'receive'
                     ? ['file', 'filename', 'type', 'mimetype', 'caption']
-                    : x.type === 'file_json' || x.type === 'file_md'
-                      ? ['file', 'filename', 'size']
-                      : x.type === 'router' && x.routing_mode === 'tasks'
-                        ? ['branch', 'tasks', 'results']
-                        : [{ agent: 'answer', context: 'context', router: 'branch' }[x.type]];
+                    : x.type === 'image_gen'
+                      ? ['file', 'files', 'count', 'reason']
+                      : x.type === 'file_json' || x.type === 'file_md'
+                        ? ['file', 'filename', 'size']
+                        : x.type === 'router' && x.routing_mode === 'tasks'
+                          ? ['branch', 'tasks', 'results']
+                          : [{ agent: 'answer', context: 'context', router: 'branch' }[x.type]];
     groups.push([x.label, keys.map(key => 'nodes.' + x.id + '.' + key)]);
   }
   return groups;
@@ -1479,6 +1488,162 @@ function renderMedia(host, n) {
     el(
       'p',
       'Kanal mengikuti sesi tujuan. WhatsApp: gambar beserta caption. Instagram resmi: gambar lalu caption terpisah (1 kredit pesan tambahan); WebP statis otomatis menjadi JPEG. Batas gambar Instagram 8 MB; dokumen belum didukung konektor resmi.',
+      'hint',
+    ),
+  );
+}
+// Profil Konten, node Input: isian yang klien lihat di menu Konten. Setiap isian menjadi {{input.<id>}}.
+function renderForm(host, n) {
+  n.form ??= [];
+  host.append(
+    el('h3', 'Isian formulir'),
+    el(
+      'p',
+      'Klien mengisi formulir ini di menu Konten. Isiannya juga dibaca node Agent sebagai pesan pelanggan, dan tiap isian bisa dipakai sebagai {{input.<id>}}. Gambar referensi berisi file dari Pustaka konten klien.',
+      'hint',
+    ),
+  );
+  n.form.forEach((f, i) => {
+    const box = el('div', undefined, 'rule');
+    box.append(
+      field('Label untuk klien', f.label, v =>
+        mutate(() => {
+          // ID isian mengikuti label; rujukan {{input.<id>}} di node lain ikut diganti.
+          f.label = v;
+          const next = slugId(v, [...reservedInputKeys, ...n.form.filter(x => x !== f).map(x => x.id)], 'isian');
+          if (next === f.id) return;
+          rewriteVariables(new RegExp('(input\\.)' + f.id + '\\b', 'g'), '$1' + next);
+          f.id = next;
+        }),
+      ),
+      field(
+        'Jenis',
+        f.type,
+        v => {
+          mutate(() => {
+            f.type = v;
+            if (v === 'choice' && !f.options.length) f.options = ['Pilihan 1'];
+          });
+          renderInspector();
+        },
+        'select',
+        Object.entries(formFieldLabels).map(([value, label]) => ({ value, label })),
+      ),
+      field('Wajib', f.required, v => mutate(() => (f.required = v)), 'checkbox'),
+    );
+    if (f.type === 'choice')
+      box.append(
+        field('Opsi (pisahkan koma)', f.options.join(', '), v =>
+          mutate(
+            () =>
+              (f.options = v
+                .split(',')
+                .map(x => x.trim())
+                .filter(Boolean)),
+          ),
+        ),
+      );
+    box.append(
+      el('small', 'Variabel: {{input.' + f.id + '}}', 'hint'),
+      btn('Hapus isian', () => {
+        mutate(() => n.form.splice(i, 1));
+        renderInspector();
+      }),
+    );
+    host.append(box);
+  });
+  if (n.form.length < 12)
+    host.append(
+      btn('＋ Isian', () => {
+        mutate(() =>
+          n.form.push({
+            id: slugId('Isian baru', [...reservedInputKeys, ...n.form.map(x => x.id)], 'isian'),
+            label: 'Isian baru',
+            type: 'text',
+            required: false,
+            options: [],
+          }),
+        );
+        renderInspector();
+      }),
+    );
+}
+// Profil Konten, node Output: gambar dan teks yang tampil serta tersimpan untuk klien. Item gambar tanpa file dilewati.
+function renderResults(host, n) {
+  n.results ??= [];
+  host.append(
+    el('h3', 'Hasil untuk klien'),
+    el(
+      'p',
+      'Gambar diisi variabel file dari Buat gambar, misalnya {{nodes.gambar.files}}. Teks boleh berisi variabel. Gambar masuk Pustaka konten klien sebagai JPEG.',
+      'hint',
+    ),
+  );
+  n.results.forEach((r, i) => {
+    const box = el('div', undefined, 'rule');
+    box.append(
+      field('Nama hasil', r.label, v => mutate(() => (r.label = v))),
+      field('Jenis', r.kind, v => mutate(() => (r.kind = v)), 'select', [
+        { value: 'image', label: 'Gambar' },
+        { value: 'text', label: 'Teks' },
+      ]),
+      varEditor('Nilai', r.value, v => mutate(() => (r.value = v)), n, 2),
+      btn('Hapus hasil', () => {
+        mutate(() => n.results.splice(i, 1));
+        renderInspector();
+      }),
+    );
+    host.append(box);
+  });
+  if (n.results.length < 6)
+    host.append(
+      btn('＋ Hasil', () => {
+        mutate(() => n.results.push({ label: 'Hasil ' + (n.results.length + 1), kind: 'text', value: '' }));
+        renderInspector();
+      }),
+    );
+}
+// Node Buat gambar: prompt, rasio, jumlah, brand, dan referensi. Biaya per gambar mengikuti tarif Model Gambar owner.
+function renderImage(host, n) {
+  n.image_ratio ??= '1:1';
+  n.image_count ??= 1;
+  n.image_brand ??= true;
+  n.image_refs ??= '';
+  host.append(
+    nodeField(n, 'value', 'Prompt gambar', 'textarea'),
+    el(
+      'p',
+      'Tulis dengan {{variabel}} dari node sebelumnya. Teks yang harus tampil di gambar tulis lengkap di prompt; model gambar sering salah mengeja bila hanya diberi petunjuk. Maksimal 4000 karakter.',
+      'hint',
+    ),
+    field('Rasio', n.image_ratio, v => mutate(() => (n.image_ratio = v)), 'select', [
+      { value: '1:1', label: '1:1 (persegi)' },
+      { value: '4:5', label: '4:5 (feed Instagram)' },
+      { value: '9:16', label: '9:16 (story)' },
+    ]),
+    field(
+      'Jumlah gambar (1–3)',
+      n.image_count,
+      v => mutate(() => (n.image_count = Math.min(3, Math.max(1, Math.trunc(v) || 1)))),
+      'number',
+    ),
+    field('Pakai identitas brand akun', n.image_brand, v => mutate(() => (n.image_brand = v)), 'checkbox'),
+    el(
+      'p',
+      'Nama, deskripsi, warna, dan logo dari Identitas brand klien di menu Konten. Bila klien belum mengisinya, bagian ini dilewati.',
+      'hint',
+    ),
+    nodeField(n, 'image_refs', 'Gambar referensi (opsional)', 'textarea'),
+    el(
+      'p',
+      'Variabel file gambar, misalnya {{nodes.lampiran.file}} dari Terima media. Maksimal 3, hanya bila model gambar diatur menerima referensi. Kosong berarti tanpa referensi.',
+      'hint',
+    ),
+    el(
+      'p',
+      'Memakai kredit AI klien: jumlah gambar × tarif Model Gambar yang diatur owner. Kredit dipesan sebelum dibuat dan gambar yang tidak jadi dikembalikan. Batas waktu 60 detik. Hasil otomatis JPEG; kirim lewat Kirim media dengan {{nodes.' +
+        n.id +
+        '.files}}. Port Berhasil dan Gagal wajib tersambung. Simulasi tidak membuat gambar dan tanpa kredit; Uji Coba membuat gambar sungguhan dan memotong kredit.',
       'hint',
     ),
   );

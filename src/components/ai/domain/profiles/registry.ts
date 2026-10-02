@@ -2,7 +2,7 @@
 // setelah diterbitkan; pemilik menyalakan atau mematikannya untuk semua klien sekaligus.
 import * as graphsSql from '../../data-access/graph-profiles-queries.js';
 import { findGraph, listGraphs } from '../builder/store.js';
-import type { GraphDefinition } from '../builder/definition.js';
+import type { GraphDefinition, GraphRole } from '../builder/definition.js';
 import { db } from '../../../../libraries/db.js';
 import { ApiError } from '../../../../libraries/errors.js';
 import * as auditEventsSql from '../../data-access/audit-events-queries.js';
@@ -15,18 +15,20 @@ export interface ProfileDefinition {
   id: string;
   name: string;
   description: string;
+  role: GraphRole;
 }
 const summary = (id: string, d: GraphDefinition) => ({
   id,
   name: d.name,
   description: d.description,
+  role: d.role,
   nodes: d.nodes.length,
 });
 export async function profileDefinition(id: unknown): Promise<ProfileDefinition> {
   const graph = typeof id === 'string' ? await findGraph(id) : null;
   if (!graph) throw new ApiError(404, 'profile_not_found', 'Profil AI tidak ditemukan');
   const d = graph.active ?? graph.draft;
-  return { id: graph.id, name: d.name, description: d.description };
+  return { id: graph.id, name: d.name, description: d.description, role: d.role };
 }
 // Graf terbit yang dijalankan WhatsApp dan Uji Coba; draft tidak pernah dipakai klien.
 export async function activeGraph(profile: string) {
@@ -40,14 +42,21 @@ export async function enabledProfiles() {
   const [graphs] = await graphsSql.listPublishedIds(db);
   return new Set(graphs.map(g => String(g.id)).filter(id => enabled.has(id)));
 }
-// Yang dilihat klien: profil yang dinyalakan pemilik (satu-satunya yang boleh dipilih), ditambah profil yang sudah
+// Profil Konten yang diterbitkan dan dinyalakan pemilik; dipakai halaman Konten klien dan antrean pekerjaannya.
+export async function contentGraphs() {
+  const enabled = await enabledProfiles();
+  return (await listGraphs())
+    .filter(g => g.active?.role === 'content' && enabled.has(g.id))
+    .map(g => ({ id: g.id, revision: g.published_revision, definition: g.active! }));
+}
+// Yang dilihat klien di Asisten AI: profil chat yang dinyalakan pemilik (satu-satunya yang boleh dipilih), ditambah profil yang sudah
 // dipakai data profilnya, supaya dashboard tetap bisa menampilkan sesi itu saat pemilik mematikan profilnya.
 export async function clientProfiles(account: string) {
   const enabled = await enabledProfiles();
   const [used] = await dataProfilesSql.listTypesByAccount(db, [account]);
   const own = new Set(used.map(row => String(row.profile_type)));
   return (await listGraphs())
-    .filter(g => (g.active && enabled.has(g.id)) || own.has(g.id))
+    .filter(g => (g.active ?? g.draft).role === 'chat' && ((g.active && enabled.has(g.id)) || own.has(g.id)))
     .map(g => ({ ...summary(g.id, g.active ?? g.draft), enabled: enabled.has(g.id) }));
 }
 export async function adminProfiles() {

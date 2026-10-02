@@ -23,7 +23,7 @@
           <a href="/dashboard/admin/profiles">Profil AI</a><span aria-hidden="true">/</span
           ><strong id="profile-title">Profil baru</strong>
         </nav>
-        <span id="revision" class="chip" hidden></span
+        <span id="role-chip" class="chip media" hidden></span><span id="revision" class="chip" hidden></span
         ><span id="unpublished" class="chip warn" hidden>Perubahan belum terbit</span>
       </div>
       <nav id="tabs" class="tabs" aria-label="Bagian editor" hidden>
@@ -58,6 +58,10 @@
           <button id="create" class="start-card">
             <span class="start-icon accent" data-icon="plus"></span
             ><span><strong>Mulai kosong</strong><small>Input → Agent → Output</small></span>
+          </button>
+          <button id="create-content" class="start-card">
+            <span class="start-icon media" data-icon="media"></span
+            ><span><strong>Mulai profil Konten</strong><small>Formulir → Buat gambar → Hasil</small></span>
           </button>
           <button id="import" class="start-card dashed">
             <span class="start-icon" data-icon="upload"></span
@@ -226,6 +230,7 @@
               <p class="chat-note">Pelanggan simulasi · <span class="mono">628000000001</span></p>
             </div>
             <form id="test-form" class="composer">
+              <div id="test-fields" class="test-fields" hidden></div>
               <textarea
                 id="test-message"
                 required
@@ -330,6 +335,11 @@
 
       <section id="settings" class="tab-panel settings" hidden>
         <div class="settings-col">
+          <section class="card">
+            <h2>Peran profil</h2>
+            <div id="role-box" class="role-grid"></div>
+            <p id="role-note" class="hint"></p>
+          </section>
           <section class="card">
             <h2>Identitas</h2>
             <label>Nama profil<input id="profile-name" maxlength="100" required /></label>

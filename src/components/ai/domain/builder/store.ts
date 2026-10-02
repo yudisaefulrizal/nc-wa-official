@@ -113,6 +113,9 @@ export async function saveGraph(actor: string, id: string, body: unknown, publis
     if (!row) throw new ApiError(404, 'profile_not_found', 'Profil tidak ditemukan.');
     if (input.revision !== Number(row.revision))
       throw new ApiError(409, 'workflow_conflict', 'Draft berubah. Muat ulang sebelum menyimpan.');
+    // Peran menentukan di mana klien memakai profil; setelah terbit tidak boleh berganti.
+    if (d && row.active && parseDefinition(decode(row.active)).role !== d.role)
+      throw new ApiError(409, 'role_locked', 'Peran profil tidak bisa diubah setelah diterbitkan. Buat profil baru.');
     if (publish) {
       const next = parseDefinition(decode(row.draft));
       assertRunnable(next);

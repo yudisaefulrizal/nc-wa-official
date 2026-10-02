@@ -39,7 +39,8 @@ export function definitionGuidePaths(d: GraphDefinition) {
   if (d.nodes.some(n => n.branches.some(b => b.source === 'table'))) paths.add(routerTablesGuideFile);
   if (d.nodes.some(n => ['memory', 'context_memory', 'context'].includes(n.type) || n.memory || n.context_memory))
     paths.add(contextGuideFile);
-  if (d.nodes.some(n => ['media', 'receive', 'file_json', 'file_md'].includes(n.type))) paths.add(mediaGuideFile);
+  if (d.nodes.some(n => ['media', 'receive', 'file_json', 'file_md', 'image_gen'].includes(n.type)))
+    paths.add(mediaGuideFile);
   return [...paths];
 }
 
@@ -68,7 +69,8 @@ export function createAssistantGuides(d: GraphDefinition, request: string) {
         path === nodeGuideFile('media') ||
         path === nodeGuideFile('receive') ||
         path === nodeGuideFile('file_json') ||
-        path === nodeGuideFile('file_md')
+        path === nodeGuideFile('file_md') ||
+        path === nodeGuideFile('image_gen')
       )
         add([mediaGuideFile]);
     }

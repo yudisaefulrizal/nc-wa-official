@@ -1,6 +1,6 @@
 // Titik masuk aplikasi: mengambil kunci engine, memulihkan kredit, AI, sesi WhatsApp, dan Auto Share, lalu
 // menjalankan penjadwal, rekonsiliasi pembayaran, dan server HTTP. Berhenti rapi saat SIGTERM/SIGINT.
-import { ai, recoverImageJobs, startImageWorker } from './components/ai/index.js';
+import { ai, recoverContentJobs, startContentWorker } from './components/ai/index.js';
 import { recoverReservations, startBasicScheduler } from './components/billing/index.js';
 import { instagram } from './components/instagram/index.js';
 import { gateway } from './http/gateway.js';
@@ -27,7 +27,7 @@ try {
 try {
   await recoverReservations();
   await ai.recover();
-  await recoverImageJobs();
+  await recoverContentJobs();
   await gateway.restore();
   await gateway.autoShare.recover();
   gateway.start();
@@ -39,7 +39,7 @@ try {
   process.exit(1);
 }
 const stopScheduler = startBasicScheduler();
-const stopImageWorker = startImageWorker();
+const stopContentWorker = startContentWorker();
 let paymentWork: Promise<void> | undefined;
 const tick = () => {
   paymentWork ??= payments
@@ -69,7 +69,7 @@ async function stop(code = 0) {
   server.closeIdleConnections();
   try {
     await stopScheduler();
-    await stopImageWorker();
+    await stopContentWorker();
     await gateway.stop();
     await closed;
     await paymentWork;
