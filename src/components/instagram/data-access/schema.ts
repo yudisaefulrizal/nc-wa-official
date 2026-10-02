@@ -19,6 +19,18 @@ export async function migrateInstagram() {
 // Instagram Login resmi (langsung ke Meta, tanpa Zernio): satu baris per akun Instagram yang diizinkan. Token
 // disimpan terenkripsi; state OAuth disimpan sebagai hash dan hanya berlaku sekali.
 export async function migrateInstagramOfficial() {
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS instagram_posts (
+      account_id CHAR(36) NOT NULL, request_id VARCHAR(128) COLLATE utf8mb4_bin NOT NULL,
+      ig_user_id VARCHAR(64) NOT NULL, file_id CHAR(36) NOT NULL, payload_hash CHAR(64) NOT NULL,
+      container_id VARCHAR(64) NULL, media_id VARCHAR(64) NULL,
+      status ENUM('preparing','processing','publishing','published','failed','unknown') NOT NULL,
+      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+      PRIMARY KEY(account_id,request_id), FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`,
+  );
+
   // Sesi Instagram resmi memakai tabel kanal yang sama dengan Zernio; bedanya provider dan tanpa akun Zernio.
   const [provider] = await db.query<any[]>(
     "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='instagram_channels' AND COLUMN_NAME='provider'",

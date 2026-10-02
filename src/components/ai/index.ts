@@ -11,3 +11,8 @@ export { aiAccountRoutes, aiAdminRoutes } from './entry-points/account-routes.js
 export { aiRoutes } from './entry-points/routes.js';
 
 export { builderAdminRoutes, builderAccountRoutes } from './entry-points/builder-routes.js';
+
+export { imageAccountRoutes, imageAdminRoutes } from './entry-points/image-routes.js';
+export { recoverImageJobs, startImageWorker } from './domain/image-jobs.js';
+
+export { contentFile } from './domain/content-files.js';

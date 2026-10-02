@@ -101,6 +101,7 @@ async function login(i: number, code = 'kode-1') {
   assert.equal(authorize.searchParams.get('client_id'), '111');
   assert.equal(authorize.searchParams.get('redirect_uri'), origin + '/auth/instagram/callback');
   assert.match(authorize.searchParams.get('scope')!, /manage_messages/);
+  assert.match(authorize.searchParams.get('scope')!, /instagram_business_content_publish/);
   const state = authorize.searchParams.get('state')!;
   return { state, callback: () => request(app).get('/auth/instagram/callback').query({ code, state }) };
 }

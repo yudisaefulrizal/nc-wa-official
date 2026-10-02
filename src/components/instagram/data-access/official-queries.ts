@@ -41,7 +41,7 @@ export function listByAccount(c: Executor, params: SqlValue[]) {
 }
 export function findOwned(c: Executor, params: SqlValue[]) {
   return c.execute<RowDataPacket[]>(
-    'SELECT ig_user_id,username,token,status,expires_at FROM instagram_official WHERE account_id=? AND ig_user_id=?',
+    'SELECT ig_user_id,username,token,permissions,status,expires_at FROM instagram_official WHERE account_id=? AND ig_user_id=?',
     params,
   );
 }

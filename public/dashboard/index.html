@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="/dashboard/css/instagram.css" />
     <link rel="stylesheet" href="/dashboard/css/integrasi.css" />
     <link rel="stylesheet" href="/dashboard/css/chat.css" />
+    <link rel="stylesheet" href="/dashboard/css/content.css" />
   </head>
   <body>
     <header id="siteheader">
@@ -245,9 +246,9 @@
             ></a
           ><a href="/dashboard/chat">Chat</a><a href="/dashboard/nomor">Session</a
           ><a href="/dashboard/uji-pesan">Uji Pesan</a><a href="/dashboard/ai">Asisten AI</a
-          ><a href="/dashboard/auto-share">Auto Share</a><a href="/dashboard/integrasi">Integrasi</a
-          ><a href="/dashboard/paket">Pembelian</a><a href="/dashboard/referral">Referral</a
-          ><span id="adminlink" hidden></span>
+          ><a href="/dashboard/konten">Konten</a><a href="/dashboard/auto-share">Auto Share</a
+          ><a href="/dashboard/integrasi">Integrasi</a><a href="/dashboard/paket">Pembelian</a
+          ><a href="/dashboard/referral">Referral</a><span id="adminlink" hidden></span>
           <div id="adminsubmenu" hidden>
             <a href="/dashboard/admin/plans">Paket & Harga</a><a href="/dashboard/admin/accounts">Akun pelanggan</a
             ><a href="/dashboard/admin/ai">Pengaturan AI</a><a href="/dashboard/admin/profiles">Profil AI</a
@@ -516,6 +517,141 @@
             ><button>Ajukan pencairan</button>
           </form>
           <div id="referral-payout-list"></div>
+        </section>
+        <section id="konten" hidden>
+          <div class="content-toolbar">
+            <p>Buat visual untuk bisnis Anda dengan profil generator AI.</p>
+            <div>
+              <span id="content-balance" class="badge"></span
+              ><button type="button" id="content-brand-open" class="secondary">Identitas brand</button>
+            </div>
+          </div>
+          <nav class="content-tabs" aria-label="Bagian konten">
+            <button type="button" data-content-tab="create" aria-pressed="true">Buat gambar</button
+            ><button type="button" data-content-tab="library" aria-pressed="false">Pustaka konten</button>
+          </nav>
+          <p id="content-notice" class="ai-helper" role="status"></p>
+          <div id="content-create" class="content-layout">
+            <form id="content-form" class="content-card">
+              <label
+                >Profil generator<select id="content-profile" required>
+                  <option value="">Pilih profil generator</option>
+                </select></label
+              >
+              <p id="content-profile-description" class="content-helper"></p>
+              <label
+                >Brief gambar<textarea
+                  id="content-brief"
+                  required
+                  maxlength="4000"
+                  rows="4"
+                  placeholder="Ceritakan gambar yang ingin dibuat, produk, suasana, dan teks yang harus muncul."
+                ></textarea>
+              </label>
+              <div id="content-custom-fields"></div>
+              <div id="content-reference-field">
+                <label for="content-upload">Referensi produk <small>PNG, JPG, WebP · maks. 10 MB</small></label>
+                <div id="content-references" class="content-references"></div>
+                <input id="content-upload" type="file" accept="image/png,image/jpeg,image/webp" multiple /><button
+                  type="button"
+                  id="content-reference-picker"
+                  class="secondary"
+                >
+                  Pilih dari pustaka
+                </button>
+              </div>
+              <fieldset>
+                <legend>Rasio gambar</legend>
+                <div id="content-ratios" class="content-choices"></div>
+              </fieldset>
+              <label
+                >Jumlah gambar<select id="content-count">
+                  <option value="1">1 gambar</option>
+                </select></label
+              >
+              <p id="content-estimate" class="content-helper" aria-live="polite"></p>
+              <button id="content-generate" type="submit">Buat gambar</button>
+            </form>
+            <article class="content-card content-result">
+              <div class="content-result-heading">
+                <h2>Hasil gambar</h2>
+                <span id="content-job-state" class="badge"></span>
+              </div>
+              <p id="content-job-info" role="status" aria-live="polite">Isi brief untuk membuat gambar pertama Anda.</p>
+              <div id="content-results" class="content-result-grid">
+                <div class="content-placeholder">
+                  <span aria-hidden="true">▧</span><strong>Ruang untuk ide Anda</strong>
+                  <p>Hasil gambar akan muncul di sini dan tersimpan di pustaka.</p>
+                </div>
+              </div>
+              <button type="button" id="content-retry" class="secondary" hidden>Coba lagi dari brief ini</button>
+            </article>
+          </div>
+          <div id="content-library" hidden>
+            <div class="content-result-heading">
+              <h2>Pustaka konten</h2>
+              <button type="button" id="content-refresh" class="secondary">Muat ulang</button>
+            </div>
+            <div id="content-library-items" class="content-library-grid"></div>
+            <div class="content-pagination">
+              <button type="button" id="content-prev" class="secondary">Sebelumnya</button
+              ><span id="content-page"></span
+              ><button type="button" id="content-next" class="secondary">Berikutnya</button>
+            </div>
+          </div>
+          <dialog id="content-instagram-dialog" aria-labelledby="content-instagram-title">
+            <div class="content-result-heading">
+              <h2 id="content-instagram-title">Post Instagram</h2>
+              <button type="button" id="content-instagram-close" class="secondary">Tutup</button>
+            </div>
+            <p class="content-helper">Posting foto ke feed Instagram · gunakan gambar 1:1 atau 4:5.</p>
+            <form id="content-instagram-form" class="content-instagram-layout">
+              <img id="content-instagram-preview" alt="Gambar yang akan diposting ke Instagram" />
+              <div>
+                <label>Akun Instagram<select id="content-instagram-account" required></select></label>
+                <button type="button" id="content-instagram-connect" class="secondary" hidden>
+                  Hubungkan Instagram
+                </button>
+                <label
+                  >Caption<textarea
+                    id="content-instagram-caption"
+                    rows="6"
+                    placeholder="Tulis caption dan hashtag untuk posting Anda."
+                    aria-describedby="content-instagram-count"
+                  ></textarea>
+                </label>
+                <small id="content-instagram-count" class="content-helper">0 / 2.200</small>
+                <p id="content-instagram-status" role="status" aria-live="polite"></p>
+                <button type="submit" id="content-instagram-submit" class="content-instagram-button" disabled>
+                  Post Instagram
+                </button>
+              </div>
+            </form>
+          </dialog>
+          <dialog id="content-brand-dialog">
+            <div class="content-result-heading">
+              <h2>Identitas brand</h2>
+              <button type="button" data-close="content-brand-dialog" class="secondary">Tutup</button>
+            </div>
+            <p>Dipakai oleh profil yang mengaktifkan Data brand.</p>
+            <form id="content-brand-form">
+              <label>Nama brand<input name="name" maxlength="100" /></label
+              ><label>Deskripsi<textarea name="description" maxlength="2000" rows="4"></textarea></label
+              ><label
+                >Warna brand<input name="colors" maxlength="200" placeholder="Contoh: hijau #087f5b dan krem" /></label
+              ><label>Logo<input id="content-brand-logo" type="file" accept="image/png,image/jpeg,image/webp" /></label>
+              <div id="content-brand-preview"></div>
+              <button type="button" id="content-brand-remove-logo" class="secondary">Lepas logo</button
+              ><button type="submit">Simpan brand</button>
+            </form>
+          </dialog>
+          <dialog id="content-reference-dialog">
+            <div class="content-result-heading">
+              <h2>Pustaka referensi</h2>
+              <button type="button" data-close="content-reference-dialog" class="secondary">Tutup</button>
+            </div>
+            <div id="content-reference-library" class="content-reference-library"></div>
+          </dialog>
         </section>
         <section id="ai" hidden>
           <div class="ai-hero">
@@ -2547,6 +2683,9 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
     <script src="/dashboard/js/pages/referral.js" defer></script>
     <script src="/dashboard/js/pages/ai-uji.js" defer></script>
     <script src="/dashboard/js/pages/dokumentasi.js" defer></script>
+    <script src="/dashboard/js/pages/content.js" defer></script>
+    <script src="/dashboard/js/pages/content-instagram.js" defer></script>
+    <script src="/dashboard/js/pages/image-profiles.js" defer></script>
     <script src="/dashboard/js/start.js" defer></script>
   </body>
 </html>

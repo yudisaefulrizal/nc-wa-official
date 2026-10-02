@@ -43,6 +43,7 @@ const aiTiers = [
   ['smart', 'Cerdas'],
   ['structured', 'Terstruktur'],
   ['decision', 'Keputusan'],
+  ['image', 'Model Gambar'],
 ];
 {
   const panel = document.createElement('section'),
@@ -88,6 +89,7 @@ const aiTiers = [
       const f = e.currentTarget,
         data = Object.fromEntries(new FormData(f));
       data.active = f.elements.active.checked;
+      data.image_options = collectImageProviderOptions(f);
       await api('/api/admin/ai/providers', 'POST', data);
       dialog.close();
       await loadProviderProfiles();
@@ -115,9 +117,9 @@ const aiTiers = [
   for (const [tier, label] of aiTiers) {
     const field = document.createElement('label'),
       input = document.createElement('input');
-    field.textContent = 'Model ' + label;
+    field.textContent = tier === 'image' ? label : 'Model ' + label;
     input.name = 'model_' + tier;
-    input.required = true;
+    input.required = false;
     input.maxLength = 100;
     input.placeholder = 'Nama model';
     field.append(input);
@@ -128,6 +130,8 @@ const aiTiers = [
     void run(async () => {
       const payload = {};
       for (const [tier] of aiTiers) payload[tier] = { profileId: ui.routes.elements[tier + 'Profile'].value };
+      if (['cheap', 'medium', 'smart', 'structured', 'decision'].every(tier => !payload[tier].profileId))
+        for (const tier of ['cheap', 'medium', 'smart', 'structured', 'decision']) delete payload[tier];
       await api('/api/admin/ai/providers/routes', 'PUT', payload);
       $('message').textContent = 'Provider per tingkat tersimpan.';
       await loadAIConfig();
@@ -154,12 +158,19 @@ async function loadProviderProfiles() {
     const select = ui.routes.elements[tier + 'Profile'],
       route = providerProfiles.routes.find(r => r.tier === tier);
     const options = providerProfiles.profiles
-      .filter(p => p.active)
+      .filter(p => p.active && p['model_' + tier])
       .map(p => new Option(p.name + ' · ' + p.provider, p.id, p.id === route?.profile_id, p.id === route?.profile_id));
     // Rute yang menunjuk ke profil nonaktif tidak boleh tampak memilih profil pertama: pilihannya kosong dan diberi
     // peringatan, sampai pemilik memilih profil aktif dan menyimpan.
     const dead = providerProfiles.inactive_tiers?.includes(tier);
-    select.replaceChildren(...(dead ? [new Option('— pilih profil aktif —', '', true, true)] : []), ...options);
+    select.replaceChildren(
+      ...(tier === 'image'
+        ? [new Option('Belum digunakan', '', !route, !route)]
+        : dead
+          ? [new Option('— pilih profil aktif —', '', true, true)]
+          : []),
+      ...options,
+    );
     select.classList.toggle('ai-route-dead', Boolean(dead));
   }
   ui.routes.querySelector('.ai-route-warning')?.remove();
@@ -192,6 +203,7 @@ async function loadProviderProfiles() {
           $('message').textContent = 'Profil ' + profile.name + ' dihapus.';
           await loadProviderProfiles();
         });
+      test.hidden = !profile.model_medium;
       remove.classList.add('danger');
       row.className = 'ai-provider-row';
       name.textContent = profile.name;
@@ -239,7 +251,9 @@ async function loadAIConfig() {
   }
   $('ai-config-status').textContent = config.configured
     ? 'Koneksi AI memakai profil Provider dan rute per tingkat.'
-    : 'Belum ada rute ke profil Provider aktif dengan API key.';
+    : config.image_configured
+      ? 'Model Gambar terhubung. Tier model teks belum dikonfigurasi.'
+      : 'Belum ada rute ke profil Provider aktif dengan API key.';
   await loadProviderProfiles();
 }
 const adminWithoutProviders = admin;

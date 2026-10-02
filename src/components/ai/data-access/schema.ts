@@ -2,6 +2,7 @@
 // disimpan karena database yang belum diperbarui masih melewatinya.
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { migrateImages } from './image-schema.js';
 import { migrateGraphs } from './graph-schema.js';
 import { db } from '../../../libraries/db.js';
 import { storageRoot } from '../../../libraries/storage.js';
@@ -74,6 +75,8 @@ export async function migrateAI() {
     ['ai_provider_profiles', 'model_smart', "VARCHAR(100) NOT NULL DEFAULT ''"],
     ['ai_provider_profiles', 'model_structured', "VARCHAR(100) NOT NULL DEFAULT ''"],
     ['ai_provider_profiles', 'model_decision', "VARCHAR(100) NOT NULL DEFAULT ''"],
+    ['ai_provider_profiles', 'model_image', "VARCHAR(100) NOT NULL DEFAULT ''"],
+    ['ai_provider_profiles', 'image_options', 'JSON NULL'],
     ['ai_settings', 'context_memory_limit', 'INT UNSIGNED NOT NULL DEFAULT 6'],
     ['ai_settings', 'trace_enabled', 'BOOLEAN NOT NULL DEFAULT FALSE'],
     ['ai_usage', 'model_calls', 'JSON NULL'],
@@ -119,6 +122,7 @@ export async function migrateAI() {
   );
   await migrateProfiles();
   await migrateGraphs();
+  await migrateImages();
   await dropStaticProfiles();
 }
 

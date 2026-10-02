@@ -10,7 +10,12 @@ import { log } from '../../../libraries/log.js';
 import { digest } from '../../../libraries/security.js';
 import * as officialSql from '../data-access/official-queries.js';
 
-const SCOPES = ['instagram_business_basic', 'instagram_business_manage_messages', 'instagram_business_manage_comments'];
+const SCOPES = [
+  'instagram_business_basic',
+  'instagram_business_manage_messages',
+  'instagram_business_manage_comments',
+  'instagram_business_content_publish',
+];
 // Alamat Meta bisa diganti lewat env hanya agar tes memakai server tiruan (seperti ZERNIO_API_URL).
 const urls = () => ({
   authorize: process.env.INSTAGRAM_AUTHORIZE_URL ?? 'https://www.instagram.com/oauth/authorize',

@@ -3,6 +3,7 @@
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { getOfficialMedia } from '../domain/official-messaging.js';
+import { createOfficialPost, officialPost, advanceOfficialPost } from '../domain/official-posts.js';
 import type { Instagram } from '../domain/instagram.js';
 
 // Didaftarkan sebelum parser JSON global: tanda tangan webhook dihitung dari body mentah.
@@ -68,6 +69,17 @@ export function instagramPublicRoutes(app: express.Express, { instagram }: { ins
   });
 }
 export function instagramRoutes(app: express.Express, { instagram }: { instagram: Instagram }) {
+  app.post('/api/instagram/posts', async (req, res) => {
+    const post = await createOfficialPost(res.locals.account.id, req.body);
+    res.status(post.status === 'published' ? 200 : 202).json(post);
+  });
+  app.get('/api/instagram/posts/:id', async (req, res) =>
+    res.json(await officialPost(res.locals.account.id, req.params.id)),
+  );
+  app.post('/api/instagram/posts/:id/advance', async (req, res) =>
+    res.json(await advanceOfficialPost(res.locals.account.id, req.params.id)),
+  );
+
   app.get('/api/instagram/zernio', async (_req, res) =>
     res.json(await instagram.zernioAccounts(res.locals.account.id)),
   );

@@ -1,5 +1,5 @@
 // Koneksi ke provider AI: pengaturan pemilik, profil provider dan rute per tier model, serta uji koneksi.
-import { modelTiers, tierConfig, type ModelTier } from './pipeline/models.js';
+import { modelTiers, providerTiers, tierConfig, type ProviderTier } from './pipeline/models.js';
 import { randomUUID } from 'node:crypto';
 import type { RowDataPacket } from 'mysql2/promise';
 import { db } from '../../../libraries/db.js';
@@ -11,6 +11,7 @@ import { AIConfig, defaults, provider, chatEndpoint, jevConnectionProbe } from '
 import { isJevModel } from './pipeline/models.js';
 import { fail, integer, text } from './input-validation.js';
 import { transaction } from './transaction.js';
+import { parseImageOptions, testImageTier } from './image-provider.js';
 import { parseMemory } from './memory.js';
 import type { AIService } from './service.js';
 import * as auditEventsSql from '../data-access/audit-events-queries.js';
@@ -44,11 +45,15 @@ export async function loadConfig(svc: AIService): Promise<AIConfig> {
         provider: r.provider,
         endpoint: r.endpoint,
         secret: r.secret,
-        model: r['model_' + r.tier] || r.model_cheap,
+        model: r['model_' + r.tier] || (r.tier === 'image' ? '' : r.model_cheap),
       },
     ]),
   );
-  const live = profiles.cheap ?? profiles.medium ?? profiles.smart ?? Object.values(profiles)[0];
+  const live =
+    profiles.cheap ??
+    profiles.medium ??
+    profiles.smart ??
+    Object.entries(profiles).find(([tier]) => tier !== 'image')?.[1];
   if (live) for (const tier of modelTiers) profiles[tier] ??= live;
   config.tier_profiles = profiles;
   // Field tingkat atas adalah proyeksi tier Sedang untuk pemanggil umum dan status kesiapan.
@@ -57,13 +62,18 @@ export async function loadConfig(svc: AIService): Promise<AIConfig> {
   config.endpoint = primary?.endpoint ?? defaults.endpoint;
   config.provider = primary?.provider ?? defaults.provider;
   config.model = primary?.model ?? '';
-  for (const tier of modelTiers) config[`model_${tier}`] = profiles[tier]?.model ?? '';
+  for (const tier of providerTiers) config[`model_${tier}`] = profiles[tier]?.model ?? '';
 
   return config;
 }
 export async function configuration(svc: AIService) {
   const { secret, onTrace, checkpoint, tier_profiles, ...config } = await svc.config();
-  return { ...config, configured: Boolean(secret), apiKey: secret ? '********' : null };
+  return {
+    ...config,
+    configured: Boolean(secret),
+    image_configured: Boolean(tier_profiles?.image?.secret && tier_profiles.image.model),
+    apiKey: secret ? '********' : null,
+  };
 }
 export async function providerProfiles(svc: AIService) {
   try {
@@ -103,8 +113,13 @@ export async function saveProviderProfile(svc: AIService, body: unknown) {
   }
   const [old] = id ? await providerProfilesSql.findSecret(db, [id]) : [[] as RowDataPacket[]];
   if (id && !old[0]) throw new ApiError(404, 'not_found', 'Profil provider tidak ditemukan');
-  const models = Object.fromEntries(modelTiers.map(tier => [tier, text(input['model_' + tier], 100, 'Model ' + tier)]));
-  if (Object.values(models).some(model => !model)) throw fail('Model tiap tingkat wajib diisi');
+  const models = Object.fromEntries(
+    providerTiers.map(tier => [tier, text(input['model_' + tier] ?? '', 100, 'Model ' + tier)]),
+  );
+  if (!Object.values(models).some(Boolean)) throw fail('Isi setidaknya satu model');
+  if (!models.image && modelTiers.some(tier => !models[tier]))
+    throw fail('Model tiap tingkat teks wajib diisi untuk provider asisten');
+  const imageOptions = parseImageOptions(input.image_options ?? old[0]?.image_options ?? {});
   let secret = old[0]?.secret ?? '';
   if (input.apiKey !== undefined && input.apiKey !== '') {
     const key = text(input.apiKey, 512, 'API key');
@@ -124,6 +139,8 @@ export async function saveProviderProfile(svc: AIService, body: unknown) {
     models.smart,
     models.structured,
     models.decision,
+    models.image,
+    JSON.stringify(imageOptions),
     active,
   ]);
   return { id: profileId };
@@ -145,13 +162,27 @@ export async function deleteProviderProfile(svc: AIService, id: unknown) {
 }
 export async function setProviderRoutes(svc: AIService, body: unknown) {
   const input = object(body);
-  for (const tier of modelTiers) {
+  // Validasi seluruh pilihan sebelum menulis agar perubahan rute tidak tersimpan separuh.
+  const imageOnly = input.image !== undefined && modelTiers.every(tier => input[tier] === undefined);
+  const changes: { tier: ProviderTier; profileId: string; model: string }[] = [];
+  for (const tier of providerTiers) {
+    if (input[tier] === undefined && (tier === 'image' || imageOnly)) continue;
     const route = object(input[tier]);
     if (typeof route.profileId !== 'string') throw fail('Rute ' + tier + ' tidak valid');
+    if (tier === 'image' && !route.profileId) {
+      changes.push({ tier, profileId: '', model: '' });
+      continue;
+    }
     const [profiles] = await providerProfilesSql.findActiveModel(db, [route.profileId], tier);
     if (!profiles[0] || !profiles[0].model) throw fail('Profil ' + tier + ' tidak aktif atau model belum diisi');
-    await providerRoutesSql.upsert(db, [tier, route.profileId, profiles[0].model]);
+    changes.push({ tier, profileId: route.profileId, model: profiles[0].model });
   }
+  await transaction(async c => {
+    for (const change of changes) {
+      if (!change.profileId) await providerRoutesSql.deleteTier(c, [change.tier]);
+      else await providerRoutesSql.upsert(c, [change.tier, change.profileId, change.model]);
+    }
+  });
   // Tanpa baris pengaturan, UPDATE di bawah tidak mengubah apa pun dan rute profil tidak pernah berlaku: AI memakai nilai
   // bawaan kode (model lama dan API key kosong) walau pengujian profil berhasil.
   await settingsSql.ensureRow(db, [
@@ -236,8 +267,9 @@ export async function configure(svc: AIService, actor: string, body: unknown) {
   return svc.configuration();
 }
 export async function testTier(svc: AIService, tier: unknown = 'medium') {
-  if (!modelTiers.includes(tier as ModelTier)) throw fail('Tier model tidak valid');
-  const config = tierConfig(await svc.config(), tier as ModelTier);
+  if (tier === 'image') return testImageTier(svc);
+  if (!providerTiers.includes(tier as ProviderTier)) throw fail('Tier model tidak valid');
+  const config = tierConfig(await svc.config(), tier as ProviderTier);
   if (!config.secret) throw fail('AI belum dikonfigurasi');
   try {
     await svc.transport(

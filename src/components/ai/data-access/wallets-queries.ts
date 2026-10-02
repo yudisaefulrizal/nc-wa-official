@@ -38,3 +38,15 @@ export function findBalance(c: Executor, params: SqlValue[]) {
 export function lockBalance(c: Executor, params: SqlValue[]) {
   return c.execute<RowDataPacket[]>(`SELECT ${columns} FROM ai_wallets WHERE account_id=? FOR UPDATE`, params);
 }
+
+// Refund gambar tidak boleh mengisi kredit paket baru bila periode berganti saat generate berjalan.
+export function imagePlanPeriod(c: Executor, params: SqlValue[]) {
+  return c.execute<RowDataPacket[]>('SELECT plan_period FROM ai_wallets WHERE account_id=?', params);
+}
+export function refundImage(c: Executor, params: SqlValue[]) {
+  const [toBalance, toPlan, period, account] = params;
+  return c.execute(
+    `UPDATE ai_wallets SET balance=balance+?,plan_balance=plan_balance+IF(${planActive} AND plan_period<=>?,LEAST(?,GREATEST(0,plan_quota-plan_balance)),0) WHERE account_id=?`,
+    [toBalance, period, toPlan, account],
+  );
+}

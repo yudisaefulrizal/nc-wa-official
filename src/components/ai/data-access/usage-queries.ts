@@ -73,3 +73,13 @@ export function finishTrial(c: Executor, params: SqlValue[]) {
     params,
   );
 }
+
+export function insertImage(c: Executor, params: SqlValue[]) {
+  return c.execute(
+    "INSERT INTO ai_usage(account_id,request_id,session_id,customer,status,input_rate,output_rate,model,agent) VALUES (?,?,'content','image','image_queued',0,0,?,'image')",
+    params,
+  );
+}
+export function finishImage(c: Executor, params: SqlValue[]) {
+  return c.execute('UPDATE ai_usage SET status=?,charged=?,model_calls=? WHERE account_id=? AND request_id=?', params);
+}

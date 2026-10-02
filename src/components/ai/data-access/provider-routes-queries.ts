@@ -19,3 +19,7 @@ export function upsert(c: Executor, params: SqlValue[]) {
     params,
   );
 }
+
+export function deleteTier(c: Executor, params: SqlValue[]) {
+  return c.execute('DELETE FROM ai_provider_routes WHERE tier=?', params);
+}

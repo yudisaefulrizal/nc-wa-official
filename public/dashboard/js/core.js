@@ -482,13 +482,14 @@ function navigate() {
   const owner = !$('adminlink').hidden;
   const allowed = owner
     ? ['admin', 'dokumentasi']
-    : ['nomor', 'uji-pesan', 'ai', 'chat', 'auto-share', 'integrasi', 'dokumentasi', 'paket', 'referral'];
+    : ['nomor', 'uji-pesan', 'ai', 'konten', 'chat', 'auto-share', 'integrasi', 'dokumentasi', 'paket', 'referral'];
   const requested = location.pathname.split('/')[2] || location.hash.slice(1);
   const page = allowed.includes(requested) ? requested : allowed[0];
   if (requested !== page) history.replaceState(null, '', '/dashboard/' + page);
   $('pagetitle').textContent = {
     'auto-share': 'Auto Share',
     ai: 'Asisten AI',
+    konten: 'Konten',
     chat: 'Chat',
     nomor: 'Session WhatsApp',
     integrasi: 'Integrasi',
@@ -503,6 +504,7 @@ function navigate() {
     'nomor',
     'uji-pesan',
     'ai',
+    'konten',
     'chat',
     'auto-share',
     'integrasi',
@@ -565,6 +567,8 @@ function navigate() {
   document.querySelector('.heading').hidden = page === 'chat';
   $('userstats').hidden = owner || page !== 'nomor';
   if (page !== 'nomor') closeQr();
+  if (page === 'konten') void run(loadContent);
+  else stopContentPolling();
 }
 document.querySelectorAll('#admin > details, #nomor > details').forEach(panel =>
   panel.addEventListener('toggle', () => {

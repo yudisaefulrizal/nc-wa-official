@@ -1,6 +1,6 @@
 // Memanggil provider AI (SumoPod, OpenRouter, atau yang kompatibel OpenAI): konfigurasi, bentuk request, dan
 // pembatasan ukuran jawaban.
-import { isJevModel, type ModelRole, type ModelTier, type AITraceEvent } from './pipeline/models.js';
+import { isJevModel, type ModelRole, type ProviderTier, type AITraceEvent } from './pipeline/models.js';
 import { request } from 'node:https';
 import { decrypt } from '../../../libraries/crypto.js';
 import { validatePublicUrl } from '../../../libraries/download.js';
@@ -51,9 +51,10 @@ export interface AIConfig {
   model_smart?: string;
   model_structured?: string;
   model_decision?: string;
+  model_image?: string;
   profile_routing_enabled?: boolean;
   tier_profiles?: Partial<
-    Record<ModelTier, { id: string; provider: AIProvider; endpoint: string; secret: string; model: string }>
+    Record<ProviderTier, { id: string; provider: AIProvider; endpoint: string; secret: string; model: string }>
   >;
   call_role?: ModelRole;
   response_format?: Record<string, unknown>;
