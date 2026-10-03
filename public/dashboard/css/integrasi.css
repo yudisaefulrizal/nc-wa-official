@@ -63,17 +63,79 @@
   background: #eef1f0;
   color: #9aa8a2;
 }
-#integrasi .integration-tile.add {
-  border-style: dashed;
-  border-color: #cfdad5;
-  background: transparent;
-  justify-content: center;
+/* Kartu tambah sesi sama dengan di Asisten AI (gayanya di sana dibatasi ke #ai, jadi diulang untuk #integrasi). */
+#integrasi .ai-session-add {
+  flex: 1;
   min-height: 150px;
-  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  border: 2px dashed #b6cbc1;
+  border-radius: 16px;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: #10231c;
+  text-align: center;
 }
-.integration-tile .plus {
-  font-size: 28px;
-  line-height: 1;
+#integrasi .ai-session-add:hover {
+  border-color: #087f5b;
+  background: #f1f9f5;
+}
+#integrasi .ai-session-add-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+#integrasi .ai-session-add strong {
+  font-size: 16px;
+}
+#integrasi .ai-session-add small {
+  font-size: 13px;
+  color: #5c7068;
+  line-height: 1.5;
+}
+#integrasi .ai-session-add-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #e3f4ec;
+  color: #087f5b;
+}
+#integrasi .ai-session-add-icon svg {
+  width: 22px;
+  height: 22px;
+}
+#integrasi .ai-session-add.full {
+  border-color: #e7d9b3;
+}
+#integrasi .ai-session-add.full:hover {
+  border-color: #c99a2e;
+  background: #fdf8ec;
+}
+#integrasi .ai-session-add.full .ai-session-add-icon {
+  background: #fbf1dc;
+  color: #a97c1c;
+}
+#integrasi .ai-session-upgrade-link {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: #0b6648;
+  font-size: 13px;
+  font-weight: 700;
+}
+#integrasi .ai-session-upgrade-link:hover {
+  text-decoration: underline;
 }
 .integration-icon {
   width: 56px;
@@ -207,4 +269,20 @@
   .integrations-buttons button {
     flex: 1;
   }
+}
+.ig-keys {
+  display: grid;
+  gap: 12px;
+}
+.ig-key-scopes {
+  display: grid;
+  gap: 6px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.ig-key-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

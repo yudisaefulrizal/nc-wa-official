@@ -131,6 +131,10 @@ export class Instagram {
     await contactsSql.deleteBySession(db, [account, session]);
     await channelsSql.deleteBySession(db, [account, session]);
   }
+  // SessionManager akun, untuk rute API integrasi yang mengirim DM.
+  managerOf(account: string) {
+    return this.requireHost().manager(account);
+  }
   private requireHost() {
     if (!this.host) throw new Error('Host Instagram belum dipasang');
     return this.host;

@@ -47,4 +47,8 @@ export async function migrateInstagramOfficial() {
   await db.query(
     `CREATE TABLE IF NOT EXISTS instagram_oauth_states (state_hash CHAR(64) PRIMARY KEY,account_id CHAR(36) NOT NULL,expires_at DATETIME NOT NULL,FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE) ENGINE=InnoDB`,
   );
+  // Key untuk aplikasi lain yang memakai akun Instagram yang sudah terhubung; hanya hash yang disimpan.
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS instagram_api_keys (id CHAR(36) PRIMARY KEY,account_id CHAR(36) NOT NULL,name VARCHAR(60) NOT NULL,key_hash CHAR(64) NOT NULL,key_hint VARCHAR(8) NOT NULL,scopes VARCHAR(300) NOT NULL,last_used_at DATETIME NULL,created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),UNIQUE KEY instagram_api_key_hash(key_hash),FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE) ENGINE=InnoDB`,
+  );
 }

@@ -3,12 +3,12 @@
 import sharp from 'sharp';
 import { contentFile } from '../../ai/index.js';
 import { db } from '../../../libraries/db.js';
-import { decrypt } from '../../../libraries/crypto.js';
+import { downloadPublicMedia } from '../../../libraries/download.js';
 import { digest } from '../../../libraries/security.js';
 import { ApiError } from '../../../libraries/errors.js';
 import { object, requiredString } from '../../../libraries/validation.js';
+import { officialToken } from './official-token.js';
 import { outboundMedia } from '../data-access/outbound-media-store.js';
-import * as officialSql from '../data-access/official-queries.js';
 import * as postsSql from '../data-access/posts-queries.js';
 
 const publishPermission = 'instagram_business_content_publish';
@@ -18,16 +18,21 @@ export async function createOfficialPost(account: string, body: unknown) {
   const input = object(body),
     requestId = postRequestId(input.requestId),
     igUserId = requiredString(input.igUserId, 'Akun Instagram', 64),
-    fileId = requiredString(input.fileId, 'Gambar', 36),
+    // Gambar berasal dari pustaka konten (fileId) atau dari alamat publik (imageUrl), tidak keduanya.
+    fileId = input.fileId === undefined ? undefined : requiredString(input.fileId, 'Gambar', 36),
+    imageUrl = input.imageUrl === undefined ? undefined : requiredString(input.imageUrl, 'Alamat gambar', 4096),
     caption = input.caption === undefined ? '' : input.caption;
   if (typeof caption !== 'string' || [...caption].length > 2200)
     throw new ApiError(400, 'invalid_caption', 'Caption maksimal 2.200 karakter.');
-  const hash = digest(JSON.stringify({ igUserId, fileId, caption }));
+  if ((fileId === undefined) === (imageUrl === undefined))
+    throw new ApiError(400, 'invalid_request', 'Isi salah satu: fileId atau imageUrl.');
+  const hash = digest(JSON.stringify(imageUrl ? { igUserId, imageUrl, caption } : { igUserId, fileId, caption }));
   const previous = await findPost(account, requestId);
   if (previous) return matchingPost(previous, hash);
-  const token = await postingToken(account, igUserId);
-  const file = await contentFile(account, fileId);
-  if (file.kind !== 'result') throw new ApiError(400, 'invalid_post_image', 'Pilih gambar hasil dari pustaka konten.');
+  const token = await officialToken(account, igUserId, publishPermission, 'instagram_publish_permission');
+  const file = fileId ? await contentFile(account, fileId) : undefined;
+  if (file && file.kind !== 'result')
+    throw new ApiError(400, 'invalid_post_image', 'Pilih gambar hasil dari pustaka konten.');
   let origin: URL;
   try {
     origin = new URL(process.env.APP_ORIGIN ?? '');
@@ -36,13 +41,16 @@ export async function createOfficialPost(account: string, body: unknown) {
     throw new ApiError(503, 'media_origin_unavailable', 'Alamat publik aplikasi belum dikonfigurasi.');
   }
   try {
-    await postsSql.insert(db, [account, requestId, igUserId, fileId, hash]);
+    // Kolom file_id wajib terisi; posting dari alamat gambar mengisinya dengan penanda "url".
+    await postsSql.insert(db, [account, requestId, igUserId, fileId ?? 'url', hash]);
   } catch (error) {
     if ((error as { code?: string }).code !== 'ER_DUP_ENTRY') throw error;
     return matchingPost((await findPost(account, requestId))!, hash);
   }
+  let download: Awaited<ReturnType<typeof downloadPublicMedia>> | undefined;
   try {
-    const media = await outboundMedia.publish(file.path, preparePostImage);
+    download = file ? undefined : await downloadPublicMedia(imageUrl!);
+    const media = await outboundMedia.publish(file?.path ?? download!.path, preparePostImage);
     const container = await metaRequest(igUserId + '/media', token, {
       image_url: new URL('/instagram/media/' + media, origin).href,
       caption,
@@ -52,6 +60,8 @@ export async function createOfficialPost(account: string, body: unknown) {
   } catch (error) {
     await postsSql.fail(db, [account, requestId]);
     throw error;
+  } finally {
+    await download?.cleanup();
   }
   return advanceOfficialPost(account, requestId);
 }
@@ -73,7 +83,7 @@ export async function advanceOfficialPost(account: string, request: unknown) {
     current = await officialPost(account, requestId);
   if (current.status !== 'processing') return current;
   const row = (await findPost(account, requestId))!,
-    token = await postingToken(account, String(row.ig_user_id));
+    token = await officialToken(account, String(row.ig_user_id), publishPermission, 'instagram_publish_permission');
   const container = await metaRequest(String(row.container_id) + '?fields=status_code', token);
   if (['ERROR', 'EXPIRED'].includes(String(container.status_code))) {
     await postsSql.fail(db, [account, requestId]);
@@ -109,16 +119,6 @@ export async function preparePostImage(data: Buffer) {
     .toBuffer();
 }
 
-async function postingToken(account: string, igUserId: string) {
-  const [rows] = await officialSql.findOwned(db, [account, igUserId]);
-  const row = rows[0];
-  if (!row) throw new ApiError(404, 'instagram_not_found', 'Akun Instagram tidak ditemukan.');
-  if (row.status !== 'active' || !row.token || !row.expires_at || new Date(row.expires_at).getTime() <= Date.now())
-    throw new ApiError(409, 'instagram_reauth', 'Hubungkan ulang akun Instagram sebelum memposting.');
-  if (!String(row.permissions).split(',').includes(publishPermission))
-    throw new ApiError(409, 'instagram_publish_permission', 'Hubungkan ulang Instagram dan berikan izin posting.');
-  return decrypt(row.token);
-}
 function postRequestId(value: unknown) {
   const id = requiredString(value, 'ID permintaan', 128);
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new ApiError(400, 'invalid_request', 'ID permintaan tidak valid.');

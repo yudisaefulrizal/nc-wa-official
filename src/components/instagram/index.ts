@@ -3,3 +3,4 @@
 export { migrateInstagram, migrateInstagramOfficial } from './data-access/schema.js';
 export { instagram, Instagram } from './domain/instagram.js';
 export { instagramPublicRoutes, instagramRoutes } from './entry-points/routes.js';
+export { instagramApiRoutes, instagramKeyRoutes } from './entry-points/integration-routes.js';

@@ -45,6 +45,8 @@ async function loadIntegrations() {
     api('/api/wallet'),
     api('/api/instagram/official'),
     loadZernio(),
+    // Daftar key hanya pelengkap: gagal memuatnya tidak boleh menahan kisi koneksi dan tombol tambah sesi.
+    loadInstagramKeys().catch(() => {}),
   ]);
   integrations.sessions = rows;
   integrations.official = official;
@@ -110,11 +112,54 @@ function integrationItems() {
 function aiLine(s) {
   return s.aiProfile ? s.aiProfile.name + (s.aiEnabled ? ' · AI aktif' : ' · AI mati') : 'Profil AI belum dipasang';
 }
+const addCardIcons = {
+  add: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  upgrade:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+};
+function openPlans() {
+  history.pushState(null, '', '/dashboard/paket');
+  navigate();
+  window.scrollTo(0, 0);
+}
+// Kartu tambah sesi, sama dengan di Asisten AI (kelas dan teksnya sama): sisa slot paket, dan saat penuh berubah
+// menjadi ajakan tingkatkan paket.
+function integrationAddCard(remaining) {
+  const full = remaining <= 0;
+  const wrap = element('div', 'ai-session-add-wrap');
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'ai-session-add' + (full ? ' full' : '');
+  const icon = element('span', 'ai-session-add-icon');
+  icon.innerHTML = full ? addCardIcons.upgrade : addCardIcons.add;
+  card.append(
+    icon,
+    element('strong', '', full ? 'Tingkatkan paket' : 'Tambah sesi'),
+    element(
+      'small',
+      '',
+      full
+        ? 'Slot sesi di paket kamu sudah penuh.'
+        : 'WhatsApp atau Instagram. Sisa ' + remaining + ' slot di paket kamu.',
+    ),
+  );
+  card.onclick = () => {
+    if (full) return openPlans();
+    $('integration-dialog').close();
+    $('sessionform').reset();
+    $('addconnection').showModal();
+  };
+  wrap.append(card);
+  if (!full) {
+    const upgrade = button('Butuh lebih banyak? Tingkatkan paket', openPlans);
+    upgrade.classList.add('ai-session-upgrade-link');
+    wrap.append(upgrade);
+  }
+  return wrap;
+}
 function renderIntegrations() {
   const active = integrations.sessions.filter(s => s.serviceActive !== false).length + hiddenSessionCount;
   $('integrations-quota').textContent = active + ' dari ' + integrations.limit + ' sesi';
-  $('integrations-add').disabled = active >= integrations.limit;
-  $('integrations-add').title = active >= integrations.limit ? 'Jatah sesi paket sudah penuh' : '';
   const items = integrationItems();
   const tiles = items.map(item => {
     const tile = document.createElement('button');
@@ -131,12 +176,8 @@ function renderIntegrations() {
     tile.onclick = () => openIntegration(item);
     return tile;
   });
-  const add = document.createElement('button');
-  add.type = 'button';
-  add.className = 'integration-tile add';
-  add.append(element('span', 'plus', '+'), element('small', '', 'Tambah'));
-  add.onclick = () => $('integrations-add').click();
-  $('integrations-grid').replaceChildren(...tiles, add);
+  // Kartu tambah sesi sama dengan di Asisten AI: sisa slot, dan berubah jadi ajakan tingkatkan paket saat penuh.
+  $('integrations-grid').replaceChildren(...tiles, integrationAddCard(integrations.limit - active));
   renderProviders();
   if (!$('integration-dialog').open) return;
   // Dialog yang sedang terbuka mengikuti data terbaru; koneksi yang sudah hilang menutupnya.
@@ -300,8 +341,3 @@ function renderProviders() {
     add,
   );
 }
-$('integrations-add').onclick = () => {
-  $('integration-dialog').close();
-  $('sessionform').reset();
-  $('addconnection').showModal();
-};

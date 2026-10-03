@@ -1651,6 +1651,22 @@
           </div>
           <div id="integration-dialog-body" class="integration-dialog-body"></div>
         </dialog>
+        <dialog id="ig-key-dialog" aria-labelledby="ig-key-title">
+          <div class="modal-heading">
+            <h2 id="ig-key-title">Generate API key</h2>
+            <button type="button" class="secondary" data-close="ig-key-dialog">Tutup</button>
+          </div>
+          <form id="ig-key-form" class="integration-dialog-body">
+            <label>Nama aplikasi<input name="name" required maxlength="60" placeholder="Aplikasi toko" /></label>
+            <fieldset id="ig-key-scopes" class="ig-key-scopes"></fieldset>
+            <button type="submit">Generate</button>
+          </form>
+          <div id="ig-key-result" class="integration-dialog-body" hidden>
+            <p class="hint">Simpan key ini sekarang. Key tidak akan ditampilkan lagi.</p>
+            <code id="ig-key-value" class="secret"></code>
+            <button type="button" id="ig-key-copy">Salin</button>
+          </div>
+        </dialog>
         <dialog id="zernio-dialog" aria-labelledby="zernio-title">
           <div class="modal-heading">
             <h2 id="zernio-title">Akun Zernio</h2>
@@ -1848,14 +1864,19 @@
         <section id="integrasi" hidden>
           <div class="integrations-head">
             <strong id="integrations-quota">—</strong>
-            <div class="integrations-buttons">
-              <button type="button" id="integrations-add">+ Tambah sesi</button>
-            </div>
           </div>
           <div id="integrations-grid" class="integrations-grid"></div>
           <section class="integrations-card" aria-labelledby="providers-title">
             <h2 id="providers-title" class="sr-only">Akun Zernio</h2>
             <div id="integrations-providers" class="integrations-providers"></div>
+          </section>
+          <section class="integrations-card" aria-labelledby="ig-keys-title">
+            <div class="integration-heading">
+              <h3 id="ig-keys-title">API untuk aplikasi lain</h3>
+              <button type="button" id="ig-key-new">Generate API key</button>
+            </div>
+            <p class="hint">Aplikasi lain memakai akun Instagram yang terhubung di sini lewat key ini.</p>
+            <div id="ig-keys" class="ig-keys"></div>
           </section>
         </section>
         <section id="api-integrasi" hidden>
@@ -2643,6 +2664,7 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
     <script src="/dashboard/js/core.js" defer></script>
     <script src="/dashboard/js/pages/instagram.js" defer></script>
     <script src="/dashboard/js/pages/integrasi.js" defer></script>
+    <script src="/dashboard/js/pages/integrasi-keys.js" defer></script>
     <script src="/dashboard/js/pages/chat.js" defer></script>
     <script src="/dashboard/js/pages/paket.js" defer></script>
     <script src="/dashboard/js/pages/admin.js" defer></script>

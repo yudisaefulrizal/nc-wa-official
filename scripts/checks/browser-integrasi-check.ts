@@ -127,13 +127,27 @@ try {
   process.env.SHOW_WHATSAPP = '';
   process.env.SHOW_ZERNIO = '';
   await page.goto(origin + '/dashboard/integrasi');
+  // Generate API key Instagram: key tampil sekali, daftar hanya memuat petunjuk, lalu dicabut.
+  await page.locator('#ig-key-new').click();
+  await page.locator('#ig-key-form input[name="name"]').fill('Aplikasi toko');
+  await page.locator('#ig-key-scopes input[value="messages:send"]').uncheck();
+  await page.locator('#ig-key-form button[type="submit"]').click();
+  await page.locator('#ig-key-result').waitFor();
+  const igKey = await page.locator('#ig-key-value').innerText();
+  assert.match(igKey, /^ncig_[a-f0-9]{64}$/);
+  await page.locator('[data-close="ig-key-dialog"]').click();
+  const igKeys = await page.locator('#ig-keys').innerText();
+  assert.match(igKeys, /Aplikasi toko/);
+  assert.ok(!igKeys.includes(igKey) && !igKeys.includes('Kirim pesan'));
+  await page.locator('#ig-keys button.danger').click();
+  await page.locator('#ig-keys').getByText('Belum ada key').waitFor();
   await grid.locator('.integration-tile', { hasText: 'kopisenja.id' }).waitFor();
   assert.equal(await grid.locator('.integration-tile', { hasText: '628123456789' }).count(), 0);
   assert.equal(await page.locator('.tabs a[href="/dashboard/auto-share"]').isVisible(), false);
   assert.equal(await page.locator('#docslink').isVisible(), false);
   assert.equal(await page.locator('#integrations-providers').isVisible(), false);
   assert.equal(await page.locator('#open-zernio').isVisible(), false);
-  await page.locator('#integrations-add').click();
+  await page.locator('#integrasi .ai-session-add').click();
   assert.equal(await page.locator('#addconnection .session-kind', { hasText: 'Scan QR' }).isVisible(), false);
   assert.equal(await page.locator('#addconnection .session-kind', { hasText: 'Zernio' }).isVisible(), false);
   assert.equal(await page.locator('#addconnection input[value="instagram-official"]').isChecked(), true);
@@ -156,7 +170,7 @@ try {
   await dialog.getByRole('button', { name: 'Putuskan' }).click();
   await official.waitFor({ state: 'detached' });
   // Tombol Hubungkan Instagram tanpa konfigurasi Meta menampilkan pesan, bukan error mentah.
-  await page.locator('#integrations-add').click();
+  await page.locator('#integrasi .ai-session-add').click();
   await page.locator('#addconnection input[value="instagram-official"]').check();
   await page.locator('#session-submit').click();
   await page.locator('#message', { hasText: 'belum dikonfigurasi' }).waitFor();
@@ -165,7 +179,7 @@ try {
   await page.locator('#message', { hasText: 'dibatalkan' }).waitFor();
   assert.equal(new URL(page.url()).search, '');
   // Tambah koneksi membuka dialog yang sama dengan pilihan WhatsApp atau Instagram.
-  await page.locator('#integrations-add').click();
+  await page.locator('#integrasi .ai-session-add').click();
   await page.locator('#addconnection').waitFor({ state: 'visible' });
   await page.locator('#addconnection').getByRole('button', { name: 'Tutup' }).click();
   // Carousel di Asisten AI: kartu tengah punya tombol Putuskan; setelah diputus tombolnya hilang.

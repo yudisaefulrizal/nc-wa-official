@@ -21,7 +21,13 @@ import { referral as defaultReferral, referralRoutes, referralAdminRoutes } from
 import { publicAccountRoutes, sessionAuth, accountRoutes, accountAdminRoutes } from '../components/account/index.js';
 import { billingPublicRoutes, billingRoutes, billingAdminRoutes } from '../components/billing/index.js';
 import { assetPublicRoutes } from '../components/auto-share/index.js';
-import { instagram, instagramPublicRoutes, instagramRoutes } from '../components/instagram/index.js';
+import {
+  instagram,
+  instagramApiRoutes,
+  instagramKeyRoutes,
+  instagramPublicRoutes,
+  instagramRoutes,
+} from '../components/instagram/index.js';
 
 export function createApp(gateway = defaultGateway, payments = defaultPayments, referral = defaultReferral) {
   const app = express();
@@ -65,6 +71,8 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
     res.set('Cache-Control', 'private, no-store');
     next();
   });
+  // API untuk aplikasi lain memakai key sendiri: tanpa batas per IP dashboard dan tanpa pemeriksaan Origin.
+  instagramApiRoutes(app, { instagram });
   app.use('/api', rateLimit({ windowMs: 60000, limit: 120 }));
   app.use('/api', (req, res, next) => {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.get('origin') !== origin) {
@@ -82,6 +90,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   builderAccountRoutes(app);
   contentAccountRoutes(app);
   instagramRoutes(app, { instagram });
+  instagramKeyRoutes(app);
   referralRoutes(app, { referral });
   app.use('/api/admin', (_req, res, next) => {
     if (res.locals.account.role !== 'owner') {
