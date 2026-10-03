@@ -57,10 +57,6 @@ async function refreshSessionCards() {
   const selected = $('ai-session').value;
   aiSessions = sessionRows;
   if (!aiSessions.some(s => s.id === selected)) $('ai-session').value = aiSessions[0]?.id ?? '';
-  aiSessionIndex = Math.max(
-    0,
-    aiSessions.findIndex(s => s.id === $('ai-session').value),
-  );
   renderSessionCards();
   renderAISessionFilters();
   renderProfileStrip();
@@ -139,7 +135,6 @@ const sessionStatusMeta = {
   logged_out: { cls: 'offline', icon: qrIcon, label: 'WhatsApp terputus — klik untuk memasang ulang', clickable: true },
 };
 let aiSessions = [],
-  aiSessionIndex = 0,
   aiSessionLimit = 1;
 // Multi-profil: profil adalah alur AI yang disiapkan pemilik NC-WA; data profil adalah isi milik akun ini untuk satu
 // profil, bisa dipasang ke sesi mana pun. "Sesi" menyunting data profil yang terpasang di sesi terpilih; "Data

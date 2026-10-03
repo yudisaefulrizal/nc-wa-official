@@ -1,32 +1,27 @@
-// Asisten AI, carousel sesi: kartu sesi WhatsApp dan Instagram, slot tambah/upgrade, geser, dan penyesuaian lebar
-// layar.
+// Asisten AI, daftar sesi: kartu sesi WhatsApp dan Instagram dalam grid, kartu tambah sesi, dan tautan tingkatkan paket.
+// Mengeklik kartu memilih sesi yang disunting di bawahnya; saklar AI tiap kartu bisa dipakai langsung.
 const addIcon =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
-const upgradeIcon =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
-// Slot carousel setelah sesi sungguhan: "tambah" (masih di bawah session_limit, membuka dialog sambung) atau "upgrade"
-// (melewati session_limit, menuju /dashboard/paket). Jumlah slot selalu minimal 5: paket kecil (batas < 5) mengisi
-// sisanya dengan slot upgrade; paket 5 ke atas hanya menampilkan slot tambah yang tersisa, ditambah tepat satu slot
-// upgrade saat kuota penuh.
-function buildSessionSlots() {
-  const used = aiSessions.length,
-    limit = Math.max(1, aiSessionLimit - hiddenSessionCount);
-  const slots = aiSessions.slice();
-  if (limit < 5) {
-    for (let i = used; i < limit; i++) slots.push({ placeholder: 'add' });
-    for (let i = Math.max(limit, used); i < 5; i++) slots.push({ placeholder: 'upgrade' });
-  } else {
-    for (let i = used; i < limit; i++) slots.push({ placeholder: 'add' });
-    if (used >= limit) slots.push({ placeholder: 'upgrade' });
-  }
-  return slots;
-}
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+const arrowIcon =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+const moreIcon =
+  '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
+const platformIcons = {
+  instagram:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>',
+  whatsapp:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l1.3-4.2A8 8 0 1 1 8.4 18.8z"/><path d="M9 9.5c.3 2.2 2.3 4.2 4.5 4.5l1.2-1.2-1.8-1-.8.6c-.8-.4-1.5-1.1-1.9-1.9l.6-.8-1-1.8z" fill="currentColor" stroke="none"/></svg>',
+};
+const sessionStatusText = {
+  connected: 'Terhubung',
+  connecting: 'Menghubungkan…',
+  qr_required: 'Scan QR',
+  logged_out: 'Terputus',
+};
 function selectSession(id) {
   if ($('ai-session').value === id) return;
   $('ai-session').value = id;
   clearReceivedTest();
-  const index = aiSessions.findIndex(s => s.id === id);
-  if (index >= 0) aiSessionIndex = index;
   renderSessionCards();
   renderAISessionFilters();
   run(async () => {
@@ -35,65 +30,104 @@ function selectSession(id) {
     await loadAssistant();
   });
 }
-// Kartu pengganti setelah sesi sungguhan: "tambah" membuka dialog sambung, "upgrade" menuju halaman pembelian.
-// Tampilannya dibuat mirip kartu sesi (kelas sama, efek kedalaman sama) tapi tanpa status, saklar, atau id.
-function buildPlaceholderCard(kind, offset) {
-  const card = document.createElement('article');
-  card.className = 'ai-session-card placeholder placeholder-' + kind;
-  card.setAttribute('role', 'button');
-  card.tabIndex = 0;
-  card.classList.add('ai-session-depth-' + Math.min(2, Math.abs(offset)));
-  const icon = document.createElement('span');
-  icon.className = 'ai-session-placeholder-icon';
-  icon.innerHTML = kind === 'add' ? addIcon : upgradeIcon;
-  const label = document.createElement('strong');
-  label.textContent = kind === 'add' ? '+ Tambah sesi' : 'Tingkatkan paket';
-  card.append(icon, label);
-  const activate = () => {
-    if (kind === 'add') {
-      $('sessionform').reset();
-      $('addconnection').showModal();
-    } else {
-      history.pushState(null, '', '/dashboard/paket');
-      navigate();
-      window.scrollTo(0, 0);
-    }
-  };
-  card.onclick = activate;
-  card.onkeydown = e => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      activate();
-    }
-  };
-  return card;
+function goToPlans() {
+  history.pushState(null, '', '/dashboard/paket');
+  navigate();
+  window.scrollTo(0, 0);
 }
-// offset adalah jarak kartu dari kartu tengah (aktif): 0 = aktif/bisa disunting, ±1/±2 = tetangga yang hanya
-// ditampilkan sebagai konteks, dipudarkan dan kontrolnya dimatikan supaya tidak tersunting tanpa sengaja.
-function buildSessionCard(s, offset) {
-  if (s.placeholder) return buildPlaceholderCard(s.placeholder, offset);
+// Kartu tambah sesi saat kuota masih tersisa; saat kuota penuh berubah menjadi ajakan tingkatkan paket. Tautan
+// "Tingkatkan paket" di bawahnya hanya ditampilkan bila kartunya masih berupa kartu tambah.
+function buildAddCard(remaining) {
+  const wrap = element('div', 'ai-session-add-wrap');
+  const full = remaining <= 0;
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'ai-session-add' + (full ? ' full' : '');
+  const icon = element('span', 'ai-session-add-icon');
+  icon.innerHTML = full ? arrowIcon : addIcon;
+  card.append(
+    icon,
+    element('strong', '', full ? 'Tingkatkan paket' : 'Tambah sesi'),
+    element('small', '', full ? 'Slot sesi di paket kamu sudah penuh.' : 'WhatsApp atau Instagram. Sisa ' + remaining + ' slot di paket kamu.'),
+  );
+  card.onclick = () => {
+    if (full) return goToPlans();
+    $('sessionform').reset();
+    $('addconnection').showModal();
+  };
+  wrap.append(card);
+  if (!full) {
+    const upgrade = button('Butuh lebih banyak? Tingkatkan paket', goToPlans);
+    upgrade.classList.add('ai-session-upgrade-link');
+    wrap.append(upgrade);
+  }
+  return wrap;
+}
+document.addEventListener('click', () =>
+  document.querySelectorAll('.ai-session-menu.open').forEach(m => m.classList.remove('open')),
+);
+function buildSessionCard(s) {
   const card = document.createElement('article');
   card.className = 'ai-session-card';
   card.setAttribute('role', 'button');
   card.tabIndex = 0;
-  const active = offset === 0;
+  const active = s.id === $('ai-session').value;
   card.setAttribute('aria-pressed', String(active));
   if (active) card.classList.add('selected');
-  card.classList.add('ai-session-depth-' + Math.min(2, Math.abs(offset)));
-  const head = document.createElement('div');
-  head.className = 'ai-session-card-head';
+  const ig = s.channel === 'instagram';
   const meta = sessionStatusMeta[s.status] ?? sessionStatusMeta.logged_out;
+  const head = element('div', 'ai-session-card-head');
+  const avatar = element('span', 'ai-session-avatar ' + (ig ? 'instagram' : 'whatsapp'));
+  avatar.innerHTML = platformIcons[ig ? 'instagram' : 'whatsapp'];
+  const nameBlock = element('div', 'ai-session-card-name');
+  const name = element('strong', '', s.id);
+  name.title = s.id;
+  nameBlock.append(name, element('small', '', s.phone || (ig ? 'Instagram' : '—')));
+  head.append(avatar, nameBlock);
+  // Putuskan sesi lewat menu ⋯ (tersembunyi bila sudah terputus); riwayat chat dan data AI tetap tersimpan.
+  if (s.status !== 'logged_out') {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'ai-session-more';
+    more.setAttribute('aria-label', 'Menu sesi ' + s.id);
+    more.setAttribute('aria-haspopup', 'menu');
+    more.innerHTML = moreIcon;
+    const menu = element('div', 'ai-session-menu');
+    menu.setAttribute('role', 'menu');
+    const disconnect = button('Putuskan sesi', async () => {
+      const how = ig
+        ? 'AI berhenti membalas DM ' + sessionAccountLabel(s) + '.'
+        : 'Perangkat WhatsApp ' + sessionAccountLabel(s) + ' dikeluarkan; memasang ulang butuh scan QR.';
+      if (!confirm('Putuskan ' + s.id + '?\n' + how + '\nRiwayat chat dan data profil tetap tersimpan.')) return;
+      await api('/sessions/' + encodeURIComponent(s.id) + '/logout', 'POST');
+      await refreshIntegrations();
+    });
+    disconnect.classList.add('secondary');
+    disconnect.setAttribute('role', 'menuitem');
+    menu.append(disconnect);
+    more.onclick = e => {
+      e.stopPropagation();
+      const open = !menu.classList.contains('open');
+      document.querySelectorAll('.ai-session-menu.open').forEach(m => m.classList.remove('open'));
+      menu.classList.toggle('open', open);
+    };
+    menu.onclick = e => e.stopPropagation();
+    head.append(more, menu);
+  }
+  const chips = element('div', 'ai-session-chips-row');
+  chips.append(element('span', 'ai-session-chip-plain', ig ? 'Instagram' : 'WhatsApp'));
   const status = document.createElement(meta.clickable ? 'button' : 'span');
-  status.className = 'ai-session-status ' + meta.cls;
-  status.innerHTML = meta.icon;
-  status.setAttribute('aria-label', meta.label);
+  status.className = 'ai-session-chip-status ' + meta.cls;
+  status.textContent = sessionStatusText[s.status] ?? sessionStatusText.logged_out;
+  status.title = meta.label;
   if (meta.clickable) {
     status.type = 'button';
+    status.setAttribute('aria-label', meta.label);
     status.onclick = e => {
       e.stopPropagation();
       run(async () => {
         // Sesi Instagram tidak memakai QR: lewat Zernio dihubungkan ulang di Zernio, lewat login resmi dari sini.
-        if (s.channel === 'instagram') {
+        if (ig) {
           if (s.status === 'logged_out') await reconnectInstagram(s);
           return;
         }
@@ -102,69 +136,45 @@ function buildSessionCard(s, offset) {
       });
     };
   }
-  const nameBlock = document.createElement('div');
-  nameBlock.className = 'ai-session-card-name';
-  const name = document.createElement('strong');
-  name.textContent = s.id;
-  const phone = document.createElement('small');
-  phone.textContent = sessionAccountLabel(s);
-  nameBlock.append(name, phone);
-  head.append(status, nameBlock);
-  // Putuskan sesi hanya di kartu tengah dan hanya bila sedang tersambung; riwayat chat dan data AI tetap tersimpan.
-  if (active && s.status !== 'logged_out') {
-    const disconnect = button('Putuskan', async () => {
-      const how =
-        s.channel === 'instagram'
-          ? 'AI berhenti membalas DM ' + sessionAccountLabel(s) + '.'
-          : 'Perangkat WhatsApp ' + sessionAccountLabel(s) + ' dikeluarkan; memasang ulang butuh scan QR.';
-      if (!confirm('Putuskan ' + s.id + '?\n' + how + '\nRiwayat chat dan data profil tetap tersimpan.')) return;
-      await api('/sessions/' + encodeURIComponent(s.id) + '/logout', 'POST');
-      await refreshIntegrations();
-    });
-    disconnect.classList.add('ai-session-disconnect', 'secondary');
-    disconnect.addEventListener('click', e => e.stopPropagation());
-    head.append(disconnect);
-  }
-  const foot = document.createElement('div');
-  foot.className = 'ai-session-card-foot';
-  const toggle = document.createElement('label');
-  toggle.className = 'ai-toggle' + (s.aiEnabled ? ' active' : '');
-  // Bukan <span>: selektor global .ai-toggle span mewarnai pil saklar, jadi label ini akan ikut tergambar seperti
-  // saklar kedua di samping saklar aslinya.
-  const robot = document.createElement('strong');
-  robot.className = 'ai-session-robot';
-  robot.textContent = 'AI Asisten';
-  const input = document.createElement('input');
-  input.type = 'checkbox';
-  input.checked = Boolean(s.aiEnabled);
-  input.disabled = !active;
-  input.onclick = e => e.stopPropagation();
-  input.onchange = () =>
-    run(async () => {
-      const desired = input.checked;
-      input.disabled = true;
-      try {
-        await api('/sessions/' + encodeURIComponent(s.id) + '/ai/enabled', 'PATCH', { enabled: desired });
-        s.aiEnabled = desired;
-        if (s.id === $('ai-session').value) $('ai-session-enabled-field').value = desired ? 'on' : '';
-      } catch (e) {
-        input.disabled = false;
-        throw e;
-      }
-      // Render ulang supaya setiap salinan kartu sesi ini (bila sesi lebih sedikit dari slot, satu sesi tampil lebih dari
-      // sekali) ikut menampilkan keadaan baru. Render ulang mengganti `input` di DOM, jadi mengaktifkannya lagi di sini
-      // berarti menyentuh elemen yang sudah terlepas.
-      renderSessionCards();
-    });
-  toggle.append(robot, input, document.createElement('span'));
+  chips.append(status);
+  const foot = element('div', 'ai-session-card-foot');
   // Kartu menunjukkan data profil yang dijalankan sesi; tanpa data profil tidak ada saklar AI, hanya "Pasang profil".
   if (s.aiProfile) {
-    const chip = element('span', 'ai-session-profile');
-    chip.append(
-      element('small', '', (profileType(s.aiProfile.profile_type)?.name ?? s.aiProfile.profile_type).toUpperCase()),
-      element('strong', '', s.aiProfile.name),
+    const agent = element('div', 'ai-session-profile');
+    agent.append(element('small', '', 'Agen yang menjawab'), element('strong', '', s.aiProfile.name));
+    const toggle = document.createElement('label');
+    toggle.className = 'ai-toggle' + (s.aiEnabled ? ' active' : '');
+    // Bukan <span> untuk teks: selektor global .ai-toggle span mewarnai pil saklar, jadi teks di sini akan ikut
+    // tergambar seperti saklar kedua di samping saklar aslinya.
+    const text = element('div', 'ai-session-robot');
+    text.append(
+      element('strong', '', 'AI Asisten'),
+      element('small', '', s.aiEnabled ? 'Aktif, membalas otomatis' : 'Nonaktif, dibalas manual'),
     );
-    foot.append(chip, toggle);
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = Boolean(s.aiEnabled);
+    input.setAttribute('aria-label', 'AI Asisten ' + s.id);
+    input.onclick = e => e.stopPropagation();
+    input.onchange = () =>
+      run(async () => {
+        const desired = input.checked;
+        input.disabled = true;
+        try {
+          await api('/sessions/' + encodeURIComponent(s.id) + '/ai/enabled', 'PATCH', { enabled: desired });
+          s.aiEnabled = desired;
+          if (s.id === $('ai-session').value) $('ai-session-enabled-field').value = desired ? 'on' : '';
+        } catch (e) {
+          input.disabled = false;
+          throw e;
+        }
+        // Render ulang mengganti `input` di DOM, jadi mengaktifkannya lagi di sini berarti menyentuh elemen yang
+        // sudah terlepas.
+        renderSessionCards();
+      });
+    toggle.onclick = e => e.stopPropagation();
+    toggle.append(text, input, document.createElement('span'));
+    foot.append(agent, toggle);
   } else {
     const attach = button('Pasang profil', async () => {
       selectSession(s.id);
@@ -172,12 +182,12 @@ function buildSessionCard(s, offset) {
     });
     attach.classList.add('ai-session-attach');
     attach.addEventListener('click', e => e.stopPropagation());
-    attach.disabled = !active;
     foot.append(element('span', 'ai-session-noprofile', 'Belum ada profil AI'), attach);
   }
-  card.append(head, foot);
+  card.append(head, chips, foot);
   card.onclick = () => selectSession(s.id);
   card.onkeydown = e => {
+    if (e.target !== card) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       selectSession(s.id);
@@ -185,110 +195,7 @@ function buildSessionCard(s, offset) {
   };
   return card;
 }
-// Putaran tanpa ujung: salinan tambahan dirender sebelum dan sesudah daftar asli supaya geser ke ujung mana pun selalu
-// punya kartu berikutnya, lalu kembali tanpa animasi ke salinan tengah. Terlihat 3 kartu penuh (yang tengah bisa
-// disunting) dan setengah kartu di tiap sisi; di layar selebar ponsel (batas 760px seperti bagian lain tab AI) hanya
-// 1 kartu selebar layar, karena 3 kartu dengan lebar minimum 120px tidak muat.
-function aiSessionFullCardsFor(viewport) {
-  return viewport < 760 ? 1 : 3;
-}
-// aiSessionIndex menunjuk ke daftar slot (sesi sungguhan + pengganti), bukan hanya aiSessions. selectSession()
-// memberi posisi sesi di aiSessions, yang selalu <= posisinya di slot karena sesi sungguhan diletakkan lebih dulu
-// oleh buildSessionSlots().
 function renderSessionCards() {
-  const slots = buildSessionSlots(),
-    count = slots.length;
-  $('ai-session-prev').disabled = $('ai-session-next').disabled = count === 0;
-  if (!count) {
-    $('ai-session-track').replaceChildren();
-    $('ai-session-dots').replaceChildren();
-    return;
-  }
-  const track = $('ai-session-track');
-  const gap = 12,
-    viewport = $('ai-session-cards').getBoundingClientRect().width;
-  // Berhenti selama wadah carousel tersembunyi (lebar 0, misalnya tab AI belum aktif), karena tata letak berbasis lebar
-  // yang dihitung saat itu salah. ResizeObserver di bawah memicu ulang begitu wadahnya benar-benar terukur.
-  if (viewport <= 0) return;
-  // N slot penuh + setengah slot mengintip di tiap sisi = selebar N+1 slot, kecuali saat 1 kartu penuh (lebar ponsel),
-  // di mana satu kartu memenuhi layar tanpa intipan.
-  const aiSessionFullCards = aiSessionFullCardsFor(viewport);
-  const visibleCards = aiSessionFullCards === 1 ? 1 : aiSessionFullCards + 1;
-  const cardWidth = Math.max(120, Math.floor((viewport - gap * (visibleCards - 1)) / visibleCards));
-  document.documentElement.style.setProperty('--ai-card-width', cardWidth + 'px');
-  // Daftar slot diulang cukup banyak supaya geser ke tepi jendela yang terlihat, dari posisi mana pun, selalu mendarat
-  // di dalam cadangan; 3x tidak cukup bila slot lebih sedikit dari kartu yang terlihat (misalnya 1-4 slot di 5 posisi).
-  const copies = Math.max(3, Math.ceil((visibleCards * 2 + 2) / count));
-  const middleBlock = Math.floor(copies / 2);
-  // Kartu aktif berada di indeks (middleBlock*count + aiSessionIndex) pada blok tengah; offset kartu lain adalah
-  // indeksnya sendiri dikurangi indeks tengah itu.
-  const centerFlatIndex = middleBlock * count + aiSessionIndex;
-  track.replaceChildren(
-    ...Array.from({ length: copies }, () => slots)
-      .flat()
-      .map((s, i) => buildSessionCard(s, i - centerFlatIndex)),
-  );
-  // Intipan depan: sisakan celah tipis di tiap sisi supaya kartu sebelumnya mengintip di kiri dan dua kartu berikutnya
-  // terlihat di kanan: setengah/AKTIF/penuh/penuh/setengah. Kartu aktif berada tepat setelah celah kiri (slot penuh
-  // pertama), jadi tata letaknya condong melihat ke depan, bukan persis di tengah.
-  const sliver = Math.max(0, viewport - aiSessionFullCards * cardWidth - (aiSessionFullCards - 1) * gap) / 2;
-  track.style.transition = 'none';
-  track.style.transform = 'translateX(-' + (centerFlatIndex * (cardWidth + gap) - sliver) + 'px)';
-  track.offsetHeight; // paksa reflow supaya perubahan transform berikutnya beranimasi
-  track.style.transition = '';
-  $('ai-session-dots').replaceChildren(
-    ...slots.map((_, i) => {
-      const dot = document.createElement('button');
-      dot.type = 'button';
-      dot.className = 'ai-session-dot' + (i === ((aiSessionIndex % count) + count) % count ? ' active' : '');
-      dot.setAttribute('aria-label', 'Slot ' + (i + 1));
-      dot.onclick = () => {
-        aiSessionIndex = i;
-        renderSessionCards();
-        settleSession();
-      };
-      return dot;
-    }),
-  );
+  const limit = Math.max(1, aiSessionLimit - hiddenSessionCount);
+  $('ai-session-cards').replaceChildren(...aiSessions.map(buildSessionCard), buildAddCard(limit - aiSessions.length));
 }
-// Menjadikan slot yang di tengah (setelah geser atau klik titik) benar-benar sesi aktif, bukan hanya tampak di tengah
-// sementara form di bawah masih menampilkan sesi sebelumnya. Sesi sungguhan di tengah → selectSession() (sama seperti
-// mengeklik kartunya): menyamakan $('ai-session').value dan memuat ulang tab knowledge-nya. Kartu
-// pengganti di tengah → tidak ada sesi aktif, jadi form disembunyikan seperti saat belum ada sesi.
-function settleSession() {
-  const slots = buildSessionSlots();
-  if (!slots.length) return;
-  const index = ((aiSessionIndex % slots.length) + slots.length) % slots.length;
-  const slot = slots[index];
-  if (slot.placeholder) {
-    if ($('ai-session').value) {
-      $('ai-session').value = '';
-      renderAISessionFilters();
-      run(loadAssistant);
-    }
-  } else if (slot.id !== $('ai-session').value) selectSession(slot.id);
-}
-function slideSession(delta) {
-  const count = buildSessionSlots().length;
-  if (!count) return;
-  aiSessionIndex += delta;
-  renderSessionCards();
-  // Setelah animasi geser, bila posisi sudah masuk ke salinan cadangan, lompat tanpa animasi ke posisi yang sama di
-  // salinan tengah supaya putaran tidak pernah kehabisan kartu. Penentuan sesi aktif juga diberi jeda yang sama,
-  // supaya klik beruntun tidak memicu satu request per klik.
-  clearTimeout(slideSession.snapTimer);
-  slideSession.snapTimer = setTimeout(() => {
-    const count = buildSessionSlots().length;
-    if (aiSessionIndex < 0 || aiSessionIndex >= count) {
-      aiSessionIndex = ((aiSessionIndex % count) + count) % count;
-      renderSessionCards();
-    }
-    settleSession();
-  }, 360);
-}
-$('ai-session-prev').onclick = () => slideSession(-1);
-$('ai-session-next').onclick = () => slideSession(1);
-// Listener 'resize' biasa melewatkan kasus yang paling penting: tab AI berubah dari display:none menjadi terlihat
-// (wadahnya berlebar nol saat tersembunyi, jadi ukuran kartu yang dihitung saat itu salah). ResizeObserver terpicu
-// setiap kali ukuran kotaknya benar-benar berubah, termasuk saat menjadi terlihat.
-new ResizeObserver(() => renderSessionCards()).observe($('ai-session-cards'));
