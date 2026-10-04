@@ -7,6 +7,7 @@ const keyScopeLabels = {
   'comments:read': 'Baca komentar',
   'comments:write': 'Balas komentar',
   'posts:publish': 'Posting',
+  'insights:read': 'Lihat statistik',
 };
 async function loadInstagramKeys() {
   const { keys } = await api('/api/instagram/keys');

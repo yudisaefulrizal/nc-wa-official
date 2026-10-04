@@ -14,6 +14,7 @@ export const keyScopes = [
   'comments:read',
   'comments:write',
   'posts:publish',
+  'insights:read',
 ] as const;
 export type KeyScope = (typeof keyScopes)[number];
 const keyPrefix = 'ncig_';

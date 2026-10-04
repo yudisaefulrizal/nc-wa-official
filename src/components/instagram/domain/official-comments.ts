@@ -1,35 +1,16 @@
 // Media, komentar, dan balasan komentar lewat Instagram Graph API resmi. Token dikirim lewat header Authorization,
 // dan ID dari klien divalidasi sebagai angka sebelum masuk ke URL.
 import { ApiError } from '../../../libraries/errors.js';
-import { log } from '../../../libraries/log.js';
 import { object, requiredString } from '../../../libraries/validation.js';
+import { graphRequest } from './official-graph.js';
 import { officialToken } from './official-token.js';
 
-const graph = () => (process.env.INSTAGRAM_GRAPH_URL ?? 'https://graph.instagram.com') + '/v23.0';
 const commentsPermission = 'instagram_business_manage_comments';
 
 function numericId(value: unknown, name: string) {
   if (typeof value !== 'string' || !/^[0-9]{1,30}$/.test(value))
     throw new ApiError(400, 'invalid_request', name + ' tidak valid');
   return value;
-}
-async function graphRequest(path: string, token: string, body?: Record<string, string>) {
-  let response: Response;
-  try {
-    response = await fetch(graph() + '/' + path, {
-      method: body ? 'POST' : 'GET',
-      headers: { Authorization: 'Bearer ' + token },
-      body: body ? new URLSearchParams(body) : undefined,
-      signal: AbortSignal.timeout(15000),
-    });
-  } catch {
-    throw new ApiError(502, 'instagram_request_failed', 'Instagram tidak dapat dihubungi');
-  }
-  if (!response.ok) {
-    log('instagram-official', 'Permintaan komentar ditolak Meta (' + response.status + ')');
-    throw new ApiError(502, 'instagram_request_failed', 'Instagram menolak permintaan; periksa izin dan ID-nya');
-  }
-  return (await response.json()) as Record<string, unknown>;
 }
 const page = (value: unknown) => {
   const limit = Number(value ?? 25);

@@ -29,6 +29,20 @@ const meta = createServer(async (req, res) => {
   for await (const chunk of req) body += chunk;
   metaCalls.push({ method: req.method!, path: req.url!, body });
   res.setHeader('Content-Type', 'application/json');
+  const url = new URL(req.url!, 'http://meta.test');
+  if (req.method === 'GET' && url.pathname.endsWith('/insights')) {
+    const names = url.searchParams.get('metric')!.split(',');
+    // Seperti Meta: satu metrik yang tidak didukung menggagalkan seluruh permintaan gabungan.
+    if (names.includes('shares')) {
+      res.statusCode = 400;
+      return void res.end('{}');
+    }
+    return void res.end(
+      JSON.stringify({ data: names.map((name, i) => ({ name, total_value: { value: 100 * (i + 1) } })) }),
+    );
+  }
+  if (req.method === 'GET' && /\/v23\.0\/\d+$/.test(url.pathname))
+    return void res.end('{"username":"integrasi_fixture","followers_count":1234,"follows_count":50,"media_count":9}');
   if (req.method === 'POST') return void res.end(req.url!.includes('/replies') ? '{"id":"555"}' : '{"success":true}');
   res.end('{"data":[{"id":"1","text":"mantap"}],"paging":{"cursors":{"after":"abc"},"next":"https://x"}}');
 });
@@ -73,7 +87,15 @@ after(async () => {
   await gateway.stop();
   await db.end();
 });
-const scopes = ['accounts:read', 'messages:read', 'messages:send', 'comments:read', 'comments:write', 'posts:publish'];
+const scopes = [
+  'accounts:read',
+  'messages:read',
+  'messages:send',
+  'comments:read',
+  'comments:write',
+  'posts:publish',
+  'insights:read',
+];
 const dashboard = (i: number, method: 'get' | 'post' | 'delete', path: string, body?: object) =>
   request(app)
     [method](path)
@@ -180,4 +202,58 @@ test('key yang dicabut langsung berhenti bekerja', async () => {
   await dashboard(0, 'delete', '/api/instagram/keys/' + made.id).expect(200);
   await external('get', '/accounts', made.key).expect(401);
   await dashboard(1, 'delete', '/api/instagram/keys/' + made.id).expect(404);
+});
+test('ringkasan akun: follower dan total bulan ini dari Meta; metrik yang tidak didukung null', async () => {
+  await db.execute(
+    "UPDATE instagram_official SET permissions='instagram_business_manage_insights' WHERE account_id=?",
+    [accounts[0]],
+  );
+  metaCalls.length = 0;
+  const body = (await external('get', `/accounts/${igUserId}/summary`, keys.full).expect(200)).body;
+  assert.equal(body.username, 'integrasi_fixture');
+  assert.equal(body.followers, 1234);
+  assert.equal(body.following, 50);
+  assert.equal(body.mediaCount, 9);
+  // Gabungan ditolak karena "shares", lalu dicoba per metrik: hanya shares yang kosong.
+  assert.equal(body.month.shares, null);
+  assert.deepEqual(body.month.unavailable, ['shares']);
+  assert.equal(body.month.views, 100);
+  assert.equal(body.month.profile_views, 100);
+  const query = new URL(
+    metaCalls.find(c => c.path.includes('/insights') && !c.path.includes(',shares'))!.path,
+    'http://x',
+  ).searchParams;
+  assert.equal(query.get('metric_type'), 'total_value');
+  const from = Date.parse(body.month.from),
+    to = Date.parse(body.month.to),
+    now = new Date();
+  assert.ok(from >= Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) && to - from <= 30 * 86400000);
+  assert.equal(Number(query.get('since')), Math.floor(from / 1000));
+  await external('get', `/accounts/${igUserId}/summary`, keys.read).expect(403);
+});
+test('ringkasan akun butuh izin insight dan hanya untuk pemilik', async () => {
+  await db.execute("UPDATE instagram_official SET permissions='instagram_business_basic' WHERE account_id=?", [
+    accounts[0],
+  ]);
+  const before = metaCalls.length;
+  const result = await external('get', `/accounts/${igUserId}/summary`, keys.full).expect(409);
+  assert.equal(result.body.error, 'instagram_permission');
+  assert.equal(metaCalls.length, before);
+  const other = (await dashboard(1, 'post', '/api/instagram/keys', { name: 'C', scopes })).body.key;
+  await external('get', `/accounts/${igUserId}/summary`, other).expect(404);
+});
+test('dokumentasi OpenAPI publik, valid, dan mencakup semua endpoint dan scope', async () => {
+  const res = await request(app).get('/api/v1/instagram/openapi.json').expect(200);
+  assert.match(res.headers['content-disposition'], /attachment; filename="nc-wa-instagram-api\.json"/);
+  assert.equal(res.body.openapi, '3.0.3');
+  assert.equal(res.body.servers[0].url, origin + '/api/v1/instagram');
+  const operations = Object.entries(res.body.paths).flatMap(([path, item]) =>
+    Object.entries(item as Record<string, { 'x-required-scope': string }>).map(([method, op]) => [
+      method.toUpperCase() + ' ' + path,
+      op['x-required-scope'],
+    ]),
+  );
+  assert.equal(operations.length, 11);
+  for (const [, scope] of operations) assert.ok(scopes.includes(scope), scope);
+  assert.deepEqual(new Set(operations.map(o => o[1])), new Set(scopes));
 });

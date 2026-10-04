@@ -48,7 +48,9 @@ export async function startLogin(account: string) {
   url.searchParams.set('client_id', id);
   url.searchParams.set('redirect_uri', redirect);
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('scope', SCOPES.join(','));
+  // Izin insight hanya diminta bila diaktifkan: izin yang belum ditambahkan di Meta App Dashboard membuat login ditolak.
+  const scopes = process.env.INSTAGRAM_INSIGHTS === '1' ? [...SCOPES, 'instagram_business_manage_insights'] : SCOPES;
+  url.searchParams.set('scope', scopes.join(','));
   url.searchParams.set('state', state);
   return { url: url.toString() };
 }

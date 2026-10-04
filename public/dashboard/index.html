@@ -1862,7 +1862,16 @@
           <section class="integrations-card" aria-labelledby="ig-keys-title">
             <div class="integration-heading">
               <h3 id="ig-keys-title">API untuk aplikasi lain</h3>
-              <button type="button" id="ig-key-new">Generate API key</button>
+              <div class="integrations-buttons">
+                <a
+                  class="button secondary"
+                  id="ig-key-docs"
+                  href="/api/v1/instagram/openapi.json"
+                  download="nc-wa-instagram-api.json"
+                  >Unduh dokumentasi (JSON)</a
+                >
+                <button type="button" id="ig-key-new">Generate API key</button>
+              </div>
             </div>
             <p class="hint">Aplikasi lain memakai akun Instagram yang terhubung di sini lewat key ini.</p>
             <div id="ig-keys" class="ig-keys"></div>

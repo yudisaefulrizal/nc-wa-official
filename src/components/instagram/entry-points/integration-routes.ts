@@ -6,6 +6,8 @@ import { rateLimit } from 'express-rate-limit';
 import { ApiError } from '../../../libraries/errors.js';
 import { digest } from '../../../libraries/security.js';
 import { object, requiredString } from '../../../libraries/validation.js';
+import { officialSummary } from '../domain/official-insights.js';
+import { integrationOpenApi } from '../domain/integration-openapi.js';
 import type { Instagram } from '../domain/instagram.js';
 import {
   authenticateIntegrationKey,
@@ -66,6 +68,11 @@ export function instagramApiRoutes(app: express.Express, { instagram }: { instag
       validate: { keyGeneratorIpFallback: false },
     }),
   );
+  // Dokumentasi sengaja publik (tanpa key): isinya hanya deskripsi API, supaya aplikasi atau agent lain bisa membacanya.
+  router.get('/openapi.json', (_req, res) => {
+    res.set('Content-Disposition', 'attachment; filename="nc-wa-instagram-api.json"');
+    res.json(integrationOpenApi(process.env.APP_ORIGIN ?? 'http://127.0.0.1:8069'));
+  });
   router.use(async (req, res, next) => {
     const key = await authenticateIntegrationKey(bearer(req));
     if (!key) throw new ApiError(401, 'unauthorized', 'API key tidak valid');
@@ -114,6 +121,9 @@ export function instagramApiRoutes(app: express.Express, { instagram }: { instag
         object(req.body).hide !== false,
       ),
     ),
+  );
+  router.get('/accounts/:ig/summary', need('insights:read'), async (req, res) =>
+    res.json(await officialSummary(account(res), req.params.ig as string)),
   );
   router.post('/posts', need('posts:publish'), async (req, res) => {
     const input = object(req.body);
