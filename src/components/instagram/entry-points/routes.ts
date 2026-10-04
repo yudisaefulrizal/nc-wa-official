@@ -2,6 +2,8 @@
 // res.locals.account), serta webhook dari Zernio yang publik.
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
+import { ApiError } from '../../../libraries/errors.js';
+import { getOfficialVideo } from '../domain/official-video.js';
 import { getOfficialMedia } from '../domain/official-messaging.js';
 import { createOfficialPost, officialPost, advanceOfficialPost } from '../domain/official-posts.js';
 import type { Instagram } from '../domain/instagram.js';
@@ -13,6 +15,19 @@ export function instagramPublicRoutes(app: express.Express, { instagram }: { ins
     res.set('Cache-Control', 'private, no-store');
     res.set('X-Content-Type-Options', 'nosniff');
     res.type(media.mimetype).sendFile(media.path);
+  });
+  app.get('/instagram/video/:token', rateLimit({ windowMs: 60000, limit: 120 }), async (req, res, next) => {
+    const media = await getOfficialVideo(req.params.token as string);
+    res.set('Cache-Control', 'private, no-store');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.type(media.mimetype).sendFile(media.path, error => {
+      if (!error) return;
+      if (!res.headersSent && (error as { status?: number }).status === 416) {
+        res.status(416).end();
+        return;
+      }
+      next(error);
+    });
   });
   app.post(
     '/zernio/webhook/:id',
@@ -70,6 +85,8 @@ export function instagramPublicRoutes(app: express.Express, { instagram }: { ins
 }
 export function instagramRoutes(app: express.Express, { instagram }: { instagram: Instagram }) {
   app.post('/api/instagram/posts', async (req, res) => {
+    if (req.body?.videoUrl !== undefined || (req.body?.mediaType !== undefined && req.body.mediaType !== 'IMAGE'))
+      throw new ApiError(400, 'invalid_request', 'Dashboard hanya mendukung posting gambar.');
     const post = await createOfficialPost(res.locals.account.id, req.body);
     res.status(post.status === 'published' ? 200 : 202).json(post);
   });

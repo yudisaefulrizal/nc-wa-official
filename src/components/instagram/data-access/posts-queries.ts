@@ -4,13 +4,13 @@ import type { Executor, SqlValue } from '../../../libraries/db.js';
 
 export function find(c: Executor, params: SqlValue[]) {
   return c.execute<RowDataPacket[]>(
-    'SELECT request_id,ig_user_id,file_id,payload_hash,container_id,media_id,status,updated_at FROM instagram_posts WHERE account_id=? AND request_id=?',
+    'SELECT request_id,ig_user_id,file_id,payload_hash,container_id,media_id,media_type,status,updated_at FROM instagram_posts WHERE account_id=? AND request_id=?',
     params,
   );
 }
 export function insert(c: Executor, params: SqlValue[]) {
   return c.execute(
-    "INSERT INTO instagram_posts(account_id,request_id,ig_user_id,file_id,payload_hash,status) VALUES (?,?,?,?,?,'preparing')",
+    "INSERT INTO instagram_posts(account_id,request_id,ig_user_id,file_id,payload_hash,media_type,status) VALUES (?,?,?,?,?,?,'preparing')",
     params,
   );
 }

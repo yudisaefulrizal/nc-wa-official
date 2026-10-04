@@ -128,7 +128,8 @@ export function instagramApiRoutes(app: express.Express, { instagram }: { instag
   router.post('/posts', need('posts:publish'), async (req, res) => {
     const input = object(req.body);
     requiredString(input.igUserId, 'igUserId', 64);
-    // Posting lewat API selalu dari alamat gambar; fileId pustaka konten hanya untuk dashboard.
+    // API hanya menerima URL publik; kombinasi fileId tidak boleh diabaikan.
+    if (input.fileId !== undefined) throw new ApiError(400, 'invalid_request', 'fileId hanya untuk gambar dashboard.');
     const post = await createOfficialPost(account(res), { ...input, fileId: undefined });
     res.status(post.status === 'published' ? 200 : 202).json(post);
   });

@@ -78,3 +78,40 @@ test('console langsung dari library tidak membocorkan objek auth', async () => {
   assert.equal(stderr, '');
   assert.ok(stdout.includes('[a] Terhubung'));
 });
+
+test('timeout unduhan dapat dikonfigurasi dan menghentikan stream yang macet', async () => {
+  const keepAlive = setInterval(() => {}, 1000);
+  const started = Date.now();
+  try {
+    await assert.rejects(
+      downloadPublicMedia('https://example.com/video', {
+        timeoutMs: 20,
+        resolve: async () => [{ address: '8.8.8.8', family: 4 }],
+        open: async () =>
+          Object.assign(new Readable({ read() {} }), { statusCode: 200, headers: {} }) as IncomingMessage,
+      }),
+      { name: 'AbortError' },
+    );
+    assert.ok(Date.now() - started < 1000);
+  } finally {
+    clearInterval(keepAlive);
+  }
+});
+
+test('timeout juga membatasi DNS lambat sebelum koneksi dibuka', async () => {
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    await assert.rejects(
+      downloadPublicMedia('https://example.com/video', {
+        timeoutMs: 20,
+        resolve: () => new Promise(resolve => setTimeout(() => resolve([{ address: '8.8.8.8', family: 4 }]), 200)),
+        open: async () => {
+          throw Error('tidak boleh membuka koneksi');
+        },
+      }),
+      { name: 'TimeoutError' },
+    );
+  } finally {
+    clearInterval(keepAlive);
+  }
+});

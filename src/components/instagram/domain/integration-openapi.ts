@@ -25,7 +25,17 @@ const query = (name: string, description: string, schema: object = { type: 'stri
 });
 const json = (schema: object) => ({ 'application/json': { schema } });
 const ok = (description: string, schema: object) => ({ description, content: json(schema) });
-const errors = { '400': error, '401': error, '403': error, '404': error, '409': error, '429': error, '502': error };
+const errors = {
+  '400': error,
+  '401': error,
+  '403': error,
+  '404': error,
+  '409': error,
+  '429': error,
+  '502': error,
+  '503': error,
+  '504': error,
+};
 function operation(scope: KeyScope, summary: string, extra: Record<string, unknown>) {
   return {
     summary,
@@ -208,32 +218,54 @@ export function integrationOpenApi(origin: string) {
         }),
       },
       '/posts': {
-        post: operation(
-          'posts:publish',
-          'Posting satu gambar ke feed (rasio 1:1 sampai 4:5, caption maksimal 2.200 karakter)',
-          {
-            requestBody: {
-              required: true,
-              content: json({
-                type: 'object',
-                required: ['requestId', 'igUserId', 'imageUrl'],
-                properties: {
-                  requestId: {
-                    type: 'string',
-                    description: 'ID unik buatan Anda; mengulang request yang sama tidak memposting dua kali',
+        post: operation('posts:publish', 'Posting gambar atau video Reels (caption maksimal 2.200 karakter)', {
+          requestBody: {
+            required: true,
+            content: json({
+              oneOf: [
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['requestId', 'igUserId', 'imageUrl'],
+                  properties: {
+                    requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' },
+                    igUserId: { type: 'string' },
+                    mediaType: { type: 'string', enum: ['IMAGE'] },
+                    imageUrl: { type: 'string', format: 'uri' },
+                    caption: { type: 'string', maxLength: 2200 },
                   },
-                  igUserId: { type: 'string' },
-                  imageUrl: { type: 'string', format: 'uri' },
-                  caption: { type: 'string', maxLength: 2200 },
                 },
-              }),
-            },
-            responses: {
-              '200': ok('Sudah terbit', { $ref: '#/components/schemas/Post' }),
-              '202': ok('Diproses Meta; pantau lewat GET /posts/{requestId}', { $ref: '#/components/schemas/Post' }),
-            },
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['requestId', 'igUserId', 'mediaType', 'videoUrl'],
+                  properties: {
+                    requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' },
+                    igUserId: { type: 'string' },
+                    mediaType: { type: 'string', enum: ['REELS'] },
+                    videoUrl: {
+                      type: 'string',
+                      format: 'uri',
+                      description: 'MP4 publik, maksimal 64 MiB, unduhan 120 detik (kebijakan NC-WA)',
+                    },
+                    caption: { type: 'string', maxLength: 2200 },
+                  },
+                  example: {
+                    requestId: 'reels-001',
+                    igUserId: '17841400000000000',
+                    mediaType: 'REELS',
+                    videoUrl: 'https://media.example/video.mp4',
+                    caption: 'Video baru',
+                  },
+                },
+              ],
+            }),
           },
-        ),
+          responses: {
+            '200': ok('Sudah terbit', { $ref: '#/components/schemas/Post' }),
+            '202': ok('Diproses Meta; pantau lewat GET /posts/{requestId}', { $ref: '#/components/schemas/Post' }),
+          },
+        }),
       },
       '/posts/{requestId}': {
         get: operation('posts:publish', 'Status posting; panggil berulang sampai published', {
@@ -256,6 +288,7 @@ export function integrationOpenApi(origin: string) {
               enum: ['preparing', 'processing', 'publishing', 'published', 'failed', 'unknown'],
               description: 'unknown: hasil publish belum pasti, periksa akun Instagram sebelum mengirim ulang',
             },
+            mediaType: { type: 'string', enum: ['IMAGE', 'REELS'], default: 'IMAGE' },
             mediaId: { type: ['string', 'null'] },
           },
         },

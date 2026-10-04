@@ -65,16 +65,17 @@ function open(url: URL, addresses: Address[], signal: AbortSignal): Promise<Inco
 }
 export interface DownloadOptions {
   maxBytes?: number;
+  timeoutMs?: number;
   resolve?: Resolver;
   open?: typeof open;
 }
 export async function downloadPublicMedia(value: string, options: DownloadOptions = {}) {
   const maxBytes = options.maxBytes ?? 32 * 1024 * 1024;
-  const signal = AbortSignal.timeout(30_000);
+  const signal = AbortSignal.timeout(options.timeoutMs ?? 30_000);
   let target = value;
   for (let redirect = 0; redirect <= 3; redirect++) {
-    const { url, addresses } = await validatePublicUrl(target, options.resolve);
-    const response = await (options.open ?? open)(url, addresses, signal);
+    const { url, addresses } = await withinTimeout(validatePublicUrl(target, options.resolve), signal);
+    const response = await withinTimeout((options.open ?? open)(url, addresses, signal), signal);
     if ([301, 302, 303, 307, 308].includes(response.statusCode ?? 0)) {
       response.destroy();
       if (!response.headers.location || redirect === 3) throw invalid();
@@ -141,5 +142,15 @@ export async function postPublicJson(value: string, payload: unknown, abort: Abo
     );
     req.once('error', reject);
     req.end(body);
+  });
+}
+
+// DNS maupun pembukaan koneksi harus ikut tenggat seluruh unduhan, termasuk resolver yang macet.
+function withinTimeout<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
   });
 }

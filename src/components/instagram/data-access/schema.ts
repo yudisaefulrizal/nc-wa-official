@@ -31,6 +31,12 @@ export async function migrateInstagramOfficial() {
     ) ENGINE=InnoDB`,
   );
 
+  const [postType] = await db.query<any[]>(
+    "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='instagram_posts' AND COLUMN_NAME='media_type'",
+  );
+  if (!postType.length)
+    await db.query("ALTER TABLE instagram_posts ADD COLUMN media_type ENUM('IMAGE','REELS') NOT NULL DEFAULT 'IMAGE'");
+
   // Sesi Instagram resmi memakai tabel kanal yang sama dengan Zernio; bedanya provider dan tanpa akun Zernio.
   const [provider] = await db.query<any[]>(
     "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='instagram_channels' AND COLUMN_NAME='provider'",

@@ -1,4 +1,4 @@
-// Posting satu gambar hasil ke feed Instagram resmi. Container diproses Meta; klaim database memastikan
+// Posting gambar feed dan video Reels melalui Instagram resmi. Container diproses Meta; klaim database memastikan
 // media_publish hanya dipanggil sekali, termasuk ketika klien mengulang permintaan setelah koneksi terputus.
 import sharp from 'sharp';
 import { contentFile } from '../../ai/index.js';
@@ -8,8 +8,13 @@ import { digest } from '../../../libraries/security.js';
 import { ApiError } from '../../../libraries/errors.js';
 import { object, requiredString } from '../../../libraries/validation.js';
 import { officialToken } from './official-token.js';
+import { prepareReel } from './official-video.js';
+import { outboundVideo } from '../data-access/outbound-video-store.js';
 import { outboundMedia } from '../data-access/outbound-media-store.js';
 import * as postsSql from '../data-access/posts-queries.js';
+
+// Dependensi I/O dapat diganti tes dengan downloader aman; tidak ada flag bypass keamanan produksi.
+export const postMediaSource = { download: downloadPublicMedia };
 
 const publishPermission = 'instagram_business_content_publish';
 const graph = () => (process.env.INSTAGRAM_GRAPH_URL ?? 'https://graph.instagram.com') + '/v23.0';
@@ -21,12 +26,28 @@ export async function createOfficialPost(account: string, body: unknown) {
     // Gambar berasal dari pustaka konten (fileId) atau dari alamat publik (imageUrl), tidak keduanya.
     fileId = input.fileId === undefined ? undefined : requiredString(input.fileId, 'Gambar', 36),
     imageUrl = input.imageUrl === undefined ? undefined : requiredString(input.imageUrl, 'Alamat gambar', 4096),
+    mediaType = input.mediaType === undefined ? 'IMAGE' : input.mediaType,
+    videoUrl = input.videoUrl === undefined ? undefined : requiredString(input.videoUrl, 'Alamat video', 4096),
     caption = input.caption === undefined ? '' : input.caption;
   if (typeof caption !== 'string' || [...caption].length > 2200)
     throw new ApiError(400, 'invalid_caption', 'Caption maksimal 2.200 karakter.');
-  if ((fileId === undefined) === (imageUrl === undefined))
-    throw new ApiError(400, 'invalid_request', 'Isi salah satu: fileId atau imageUrl.');
-  const hash = digest(JSON.stringify(imageUrl ? { igUserId, imageUrl, caption } : { igUserId, fileId, caption }));
+  if (
+    (mediaType !== 'IMAGE' && mediaType !== 'REELS') ||
+    (mediaType === 'REELS'
+      ? !videoUrl || fileId !== undefined || imageUrl !== undefined
+      : videoUrl !== undefined || (fileId === undefined) === (imageUrl === undefined))
+  )
+    throw new ApiError(400, 'invalid_request', 'Isi imageUrl/fileId untuk IMAGE atau hanya videoUrl untuk REELS.');
+  // Bentuk hash IMAGE harus tetap identik dengan permintaan historis.
+  const hash = digest(
+    JSON.stringify(
+      mediaType === 'REELS'
+        ? { igUserId, mediaType, videoUrl, caption }
+        : imageUrl
+          ? { igUserId, imageUrl, caption }
+          : { igUserId, fileId, caption },
+    ),
+  );
   const previous = await findPost(account, requestId);
   if (previous) return matchingPost(previous, hash);
   const token = await officialToken(account, igUserId, publishPermission, 'instagram_publish_permission');
@@ -40,25 +61,32 @@ export async function createOfficialPost(account: string, body: unknown) {
   } catch {
     throw new ApiError(503, 'media_origin_unavailable', 'Alamat publik aplikasi belum dikonfigurasi.');
   }
+  // Validasi dan rehost video selesai sebelum reservasi SQL maupun container Meta.
+  const video = mediaType === 'REELS' ? await prepareReel(videoUrl!, postMediaSource.download) : undefined;
   try {
     // Kolom file_id wajib terisi; posting dari alamat gambar mengisinya dengan penanda "url".
-    await postsSql.insert(db, [account, requestId, igUserId, fileId ?? 'url', hash]);
+    await postsSql.insert(db, [account, requestId, igUserId, fileId ?? 'url', hash, mediaType as string]);
   } catch (error) {
+    if (video) await outboundVideo.remove(video);
     if ((error as { code?: string }).code !== 'ER_DUP_ENTRY') throw error;
     return matchingPost((await findPost(account, requestId))!, hash);
   }
   let download: Awaited<ReturnType<typeof downloadPublicMedia>> | undefined;
   try {
-    download = file ? undefined : await downloadPublicMedia(imageUrl!);
-    const media = await outboundMedia.publish(file?.path ?? download!.path, preparePostImage);
-    const container = await metaRequest(igUserId + '/media', token, {
-      image_url: new URL('/instagram/media/' + media, origin).href,
-      caption,
-    });
+    let mediaBody: Record<string, string>;
+    if (video) {
+      mediaBody = { media_type: 'REELS', video_url: new URL('/instagram/video/' + video, origin).href, caption };
+    } else {
+      download = file ? undefined : await postMediaSource.download(imageUrl!);
+      const media = await outboundMedia.publish(file?.path ?? download!.path, preparePostImage);
+      mediaBody = { image_url: new URL('/instagram/media/' + media, origin).href, caption };
+    }
+    const container = await metaRequest(igUserId + '/media', token, mediaBody);
     if (typeof container.id !== 'string' || !/^\d+$/.test(container.id)) throw metaError();
     await postsSql.prepared(db, [container.id, account, requestId]);
   } catch (error) {
     await postsSql.fail(db, [account, requestId]);
+    if (video) await outboundVideo.remove(video);
     throw error;
   } finally {
     await download?.cleanup();
@@ -73,7 +101,11 @@ export async function officialPost(account: string, request: unknown) {
   // Setelah crash, jangan menerbitkan lagi kiriman yang mungkin sudah diterima Meta.
   const age = Date.now() - new Date(row.updated_at).getTime();
   if (row.status === 'publishing' && age > 60000) await postsSql.uncertain(db, [account, requestId]);
-  if ((row.status === 'preparing' && age > 60000) || (row.status === 'processing' && age > 5 * 60000))
+  const reels = row.media_type === 'REELS';
+  if (
+    (row.status === 'preparing' && age > (reels ? 5 : 1) * 60000) ||
+    (row.status === 'processing' && age > (reels ? 30 : 5) * 60000)
+  )
     await postsSql.fail(db, [account, requestId]);
   return postView((await findPost(account, requestId))!);
 }
@@ -132,6 +164,7 @@ function postView(row: NonNullable<Awaited<ReturnType<typeof findPost>>>) {
   return {
     requestId: String(row.request_id),
     status: String(row.status),
+    mediaType: String(row.media_type ?? 'IMAGE'),
     mediaId: row.media_id ? String(row.media_id) : null,
   };
 }
