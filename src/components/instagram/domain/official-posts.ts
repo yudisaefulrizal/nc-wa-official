@@ -1,4 +1,4 @@
-// Posting gambar feed dan video Reels melalui Instagram resmi. Container diproses Meta; klaim database memastikan
+// Posting gambar feed, carousel, dan video Reels melalui Instagram resmi. Container diproses Meta; klaim database memastikan
 // media_publish hanya dipanggil sekali, termasuk ketika klien mengulang permintaan setelah koneksi terputus.
 import sharp from 'sharp';
 import { contentFile } from '../../ai/index.js';
@@ -28,24 +28,34 @@ export async function createOfficialPost(account: string, body: unknown) {
     imageUrl = input.imageUrl === undefined ? undefined : requiredString(input.imageUrl, 'Alamat gambar', 4096),
     mediaType = input.mediaType === undefined ? 'IMAGE' : input.mediaType,
     videoUrl = input.videoUrl === undefined ? undefined : requiredString(input.videoUrl, 'Alamat video', 4096),
+    imageUrls = input.imageUrls === undefined ? undefined : carouselUrls(input.imageUrls),
     caption = input.caption === undefined ? '' : input.caption;
   if (typeof caption !== 'string' || [...caption].length > 2200)
     throw new ApiError(400, 'invalid_caption', 'Caption maksimal 2.200 karakter.');
+  const carousel = mediaType === 'CAROUSEL';
   if (
-    (mediaType !== 'IMAGE' && mediaType !== 'REELS') ||
-    (mediaType === 'REELS'
-      ? !videoUrl || fileId !== undefined || imageUrl !== undefined
-      : videoUrl !== undefined || (fileId === undefined) === (imageUrl === undefined))
+    (mediaType !== 'IMAGE' && mediaType !== 'REELS' && !carousel) ||
+    (carousel
+      ? !imageUrls || fileId !== undefined || imageUrl !== undefined || videoUrl !== undefined
+      : imageUrls !== undefined) ||
+    (mediaType === 'REELS' && (!videoUrl || fileId !== undefined || imageUrl !== undefined)) ||
+    (mediaType === 'IMAGE' && (videoUrl !== undefined || (fileId === undefined) === (imageUrl === undefined)))
   )
-    throw new ApiError(400, 'invalid_request', 'Isi imageUrl/fileId untuk IMAGE atau hanya videoUrl untuk REELS.');
+    throw new ApiError(
+      400,
+      'invalid_request',
+      'Isi imageUrl/fileId untuk IMAGE, hanya videoUrl untuk REELS, atau hanya imageUrls (2–10) untuk CAROUSEL.',
+    );
   // Bentuk hash IMAGE harus tetap identik dengan permintaan historis.
   const hash = digest(
     JSON.stringify(
       mediaType === 'REELS'
         ? { igUserId, mediaType, videoUrl, caption }
-        : imageUrl
-          ? { igUserId, imageUrl, caption }
-          : { igUserId, fileId, caption },
+        : carousel
+          ? { igUserId, mediaType, imageUrls, caption }
+          : imageUrl
+            ? { igUserId, imageUrl, caption }
+            : { igUserId, fileId, caption },
     ),
   );
   const previous = await findPost(account, requestId);
@@ -72,9 +82,25 @@ export async function createOfficialPost(account: string, body: unknown) {
     return matchingPost((await findPost(account, requestId))!, hash);
   }
   let download: Awaited<ReturnType<typeof downloadPublicMedia>> | undefined;
+  const downloads: NonNullable<typeof download>[] = [];
   try {
     let mediaBody: Record<string, string>;
-    if (video) {
+    if (carousel) {
+      // Setiap gambar menjadi container item carousel; container induk membawa caption dan urutan item.
+      const children: string[] = [];
+      for (const url of imageUrls!) {
+        const item = await postMediaSource.download(url);
+        downloads.push(item);
+        const media = await outboundMedia.publish(item.path, preparePostImage);
+        const child = await metaRequest(igUserId + '/media', token, {
+          image_url: new URL('/instagram/media/' + media, origin).href,
+          is_carousel_item: 'true',
+        });
+        if (typeof child.id !== 'string' || !/^\d+$/.test(child.id)) throw metaError();
+        children.push(child.id);
+      }
+      mediaBody = { media_type: 'CAROUSEL', children: children.join(','), caption };
+    } else if (video) {
       mediaBody = { media_type: 'REELS', video_url: new URL('/instagram/video/' + video, origin).href, caption };
     } else {
       download = file ? undefined : await postMediaSource.download(imageUrl!);
@@ -90,6 +116,7 @@ export async function createOfficialPost(account: string, body: unknown) {
     throw error;
   } finally {
     await download?.cleanup();
+    for (const item of downloads) await item.cleanup();
   }
   return advanceOfficialPost(account, requestId);
 }
@@ -101,10 +128,12 @@ export async function officialPost(account: string, request: unknown) {
   // Setelah crash, jangan menerbitkan lagi kiriman yang mungkin sudah diterima Meta.
   const age = Date.now() - new Date(row.updated_at).getTime();
   if (row.status === 'publishing' && age > 60000) await postsSql.uncertain(db, [account, requestId]);
-  const reels = row.media_type === 'REELS';
+  // Carousel mengunduh dan mendaftarkan hingga 10 gambar, jadi diberi waktu persiapan seperti Reels.
+  const reels = row.media_type === 'REELS',
+    carousel = row.media_type === 'CAROUSEL';
   if (
-    (row.status === 'preparing' && age > (reels ? 5 : 1) * 60000) ||
-    (row.status === 'processing' && age > (reels ? 30 : 5) * 60000)
+    (row.status === 'preparing' && age > (reels || carousel ? 5 : 1) * 60000) ||
+    (row.status === 'processing' && age > (reels ? 30 : carousel ? 10 : 5) * 60000)
   )
     await postsSql.fail(db, [account, requestId]);
   return postView((await findPost(account, requestId))!);
@@ -151,6 +180,11 @@ export async function preparePostImage(data: Buffer) {
     .toBuffer();
 }
 
+function carouselUrls(value: unknown) {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 10)
+    throw new ApiError(400, 'invalid_request', 'Carousel berisi 2 sampai 10 gambar.');
+  return value.map(url => requiredString(url, 'Alamat gambar', 4096));
+}
 function postRequestId(value: unknown) {
   const id = requiredString(value, 'ID permintaan', 128);
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new ApiError(400, 'invalid_request', 'ID permintaan tidak valid.');

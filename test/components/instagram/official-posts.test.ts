@@ -40,6 +40,7 @@ let containerStatus = 'FINISHED',
   containerFailure = false,
   created = 0,
   published = 0;
+const submissions: URLSearchParams[] = [];
 let submitted: URLSearchParams, file: { id: string; url: string }, reference: { id: string }, foreign: { id: string };
 const mediaPaths: string[] = [];
 const meta = createServer(async (req, res) => {
@@ -51,6 +52,7 @@ const meta = createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
     submitted = new URLSearchParams(body);
+    submissions.push(submitted);
     created++;
     if (containerFailure) {
       res.statusCode = 500;
@@ -551,4 +553,96 @@ test('tipe harus string; hash gambar historis tetap cocok dengan IMAGE eksplisit
     .expect(200);
   assert.equal(result.body.mediaType, 'IMAGE');
   assert.equal(result.body.mediaId, '9911');
+});
+
+test('Carousel API: item berurutan, container induk dengan caption, publish sekali, dan validasi jumlah', async () => {
+  const jpeg = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#d8e4dc' } })
+    .jpeg()
+    .toBuffer();
+  const restore = mock.method(postMediaSource, 'download', (url: string, options: DownloadOptions) =>
+    downloadPublicMedia(url, {
+      ...options,
+      resolve: async () => [{ address: '8.8.8.8', family: 4 }],
+      open: async () =>
+        Object.assign(Readable.from([jpeg]), {
+          statusCode: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        }) as IncomingMessage,
+    }),
+  );
+  try {
+    const key = (
+      await api('post', '/api/instagram/keys')
+        .send({ name: 'Carousel', scopes: ['posts:publish'] })
+        .expect(201)
+    ).body.key;
+    const external = (method: 'post' | 'get', route: string) =>
+      request(app)
+        [method]('/api/v1/instagram' + route)
+        .set('Authorization', 'Bearer ' + key);
+    const imageUrls = [
+      'https://fixture.example/1.jpg',
+      'https://fixture.example/2.jpg',
+      'https://fixture.example/3.jpg',
+    ];
+    const body = { requestId: randomUUID(), igUserId, mediaType: 'CAROUSEL', imageUrls, caption: 'Carousel uji #buku' };
+    containerStatus = 'IN_PROGRESS';
+    submissions.length = 0;
+    const beforePublished = published;
+    const result = await external('post', '/posts').send(body).expect(202);
+    assert.equal(result.body.status, 'processing');
+    assert.equal(result.body.mediaType, 'CAROUSEL');
+    // Tiga item carousel lalu satu container induk.
+    assert.equal(submissions.length, 4);
+    const items = submissions.slice(0, 3),
+      parent = submissions[3];
+    for (const item of items) {
+      assert.equal(item.get('is_carousel_item'), 'true');
+      assert.equal(item.has('caption'), false);
+      const url = new URL(item.get('image_url')!);
+      const media = await outboundMedia.get(url.pathname.split('/').at(-1)!);
+      mediaPaths.push(media.path);
+      assert.equal(media.mimetype, 'image/jpeg');
+    }
+    assert.equal(parent.get('media_type'), 'CAROUSEL');
+    assert.equal(parent.get('caption'), body.caption);
+    const childIds = parent.get('children')!.split(',');
+    assert.equal(childIds.length, 3);
+    assert.ok(childIds.every(id => /^\d+$/.test(id)));
+    assert.equal(new Set(childIds).size, 3);
+    // Permintaan ulang yang sama tidak membuat container baru.
+    await external('post', '/posts').send(body).expect(202);
+    assert.equal(submissions.length, 4);
+    containerStatus = 'FINISHED';
+    const done = await external('get', '/posts/' + body.requestId).expect(200);
+    assert.equal(done.body.status, 'published');
+    assert.equal(done.body.mediaType, 'CAROUSEL');
+    await external('get', '/posts/' + body.requestId).expect(200);
+    assert.equal(published, beforePublished + 1);
+    const conflict = await external('post', '/posts')
+      .send({ ...body, imageUrls: [...imageUrls].reverse() })
+      .expect(409);
+    assert.equal(conflict.body.error, 'idempotency_conflict');
+    const invalid = [
+      { imageUrls: imageUrls.slice(0, 1) },
+      { imageUrls: Array(11).fill(imageUrls[0]) },
+      { imageUrls: 'https://fixture.example/1.jpg' },
+      { imageUrl: imageUrls[0] },
+      { mediaType: 'IMAGE' },
+    ];
+    for (const extra of invalid)
+      await external('post', '/posts')
+        .send({ ...body, requestId: randomUUID(), ...extra })
+        .expect(400);
+    await external('post', '/posts')
+      .send({ requestId: randomUUID(), igUserId, mediaType: 'CAROUSEL', caption: 'tanpa gambar' })
+      .expect(400);
+    // Endpoint dashboard tetap hanya untuk gambar tunggal.
+    await api('post', '/api/instagram/posts')
+      .send({ ...body, requestId: randomUUID() })
+      .expect(400);
+  } finally {
+    containerStatus = 'FINISHED';
+    restore.mock.restore();
+  }
 });

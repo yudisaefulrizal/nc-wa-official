@@ -218,54 +218,84 @@ export function integrationOpenApi(origin: string) {
         }),
       },
       '/posts': {
-        post: operation('posts:publish', 'Posting gambar atau video Reels (caption maksimal 2.200 karakter)', {
-          requestBody: {
-            required: true,
-            content: json({
-              oneOf: [
-                {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['requestId', 'igUserId', 'imageUrl'],
-                  properties: {
-                    requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' },
-                    igUserId: { type: 'string' },
-                    mediaType: { type: 'string', enum: ['IMAGE'] },
-                    imageUrl: { type: 'string', format: 'uri' },
-                    caption: { type: 'string', maxLength: 2200 },
-                  },
-                },
-                {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['requestId', 'igUserId', 'mediaType', 'videoUrl'],
-                  properties: {
-                    requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' },
-                    igUserId: { type: 'string' },
-                    mediaType: { type: 'string', enum: ['REELS'] },
-                    videoUrl: {
-                      type: 'string',
-                      format: 'uri',
-                      description: 'MP4 publik, maksimal 64 MiB, unduhan 120 detik (kebijakan NC-WA)',
+        post: operation(
+          'posts:publish',
+          'Posting gambar, carousel, atau video Reels (caption maksimal 2.200 karakter)',
+          {
+            requestBody: {
+              required: true,
+              content: json({
+                oneOf: [
+                  {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['requestId', 'igUserId', 'imageUrl'],
+                    properties: {
+                      requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' },
+                      igUserId: { type: 'string' },
+                      mediaType: { type: 'string', enum: ['IMAGE'] },
+                      imageUrl: { type: 'string', format: 'uri' },
+                      caption: { type: 'string', maxLength: 2200 },
                     },
-                    caption: { type: 'string', maxLength: 2200 },
                   },
-                  example: {
-                    requestId: 'reels-001',
-                    igUserId: '17841400000000000',
-                    mediaType: 'REELS',
-                    videoUrl: 'https://media.example/video.mp4',
-                    caption: 'Video baru',
+                  {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['requestId', 'igUserId', 'mediaType', 'videoUrl'],
+                    properties: {
+                      requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' },
+                      igUserId: { type: 'string' },
+                      mediaType: { type: 'string', enum: ['REELS'] },
+                      videoUrl: {
+                        type: 'string',
+                        format: 'uri',
+                        description: 'MP4 publik, maksimal 64 MiB, unduhan 120 detik (kebijakan NC-WA)',
+                      },
+                      caption: { type: 'string', maxLength: 2200 },
+                    },
+                    example: {
+                      requestId: 'reels-001',
+                      igUserId: '17841400000000000',
+                      mediaType: 'REELS',
+                      videoUrl: 'https://media.example/video.mp4',
+                      caption: 'Video baru',
+                    },
                   },
-                },
-              ],
-            }),
+                  {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['requestId', 'igUserId', 'mediaType', 'imageUrls'],
+                    properties: {
+                      requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' },
+                      igUserId: { type: 'string' },
+                      mediaType: { type: 'string', enum: ['CAROUSEL'] },
+                      imageUrls: {
+                        type: 'array',
+                        minItems: 2,
+                        maxItems: 10,
+                        items: { type: 'string', format: 'uri' },
+                        description:
+                          'Gambar publik berurutan, rasio 1:1 sampai 1.91:1 atau 4:5, maksimal 8 MB per gambar',
+                      },
+                      caption: { type: 'string', maxLength: 2200 },
+                    },
+                    example: {
+                      requestId: 'carousel-001',
+                      igUserId: '17841400000000000',
+                      mediaType: 'CAROUSEL',
+                      imageUrls: ['https://media.example/1.jpg', 'https://media.example/2.jpg'],
+                      caption: 'Carousel baru',
+                    },
+                  },
+                ],
+              }),
+            },
+            responses: {
+              '200': ok('Sudah terbit', { $ref: '#/components/schemas/Post' }),
+              '202': ok('Diproses Meta; pantau lewat GET /posts/{requestId}', { $ref: '#/components/schemas/Post' }),
+            },
           },
-          responses: {
-            '200': ok('Sudah terbit', { $ref: '#/components/schemas/Post' }),
-            '202': ok('Diproses Meta; pantau lewat GET /posts/{requestId}', { $ref: '#/components/schemas/Post' }),
-          },
-        }),
+        ),
       },
       '/posts/{requestId}': {
         get: operation('posts:publish', 'Status posting; panggil berulang sampai published', {
@@ -288,7 +318,7 @@ export function integrationOpenApi(origin: string) {
               enum: ['preparing', 'processing', 'publishing', 'published', 'failed', 'unknown'],
               description: 'unknown: hasil publish belum pasti, periksa akun Instagram sebelum mengirim ulang',
             },
-            mediaType: { type: 'string', enum: ['IMAGE', 'REELS'], default: 'IMAGE' },
+            mediaType: { type: 'string', enum: ['IMAGE', 'REELS', 'CAROUSEL'], default: 'IMAGE' },
             mediaId: { type: ['string', 'null'] },
           },
         },

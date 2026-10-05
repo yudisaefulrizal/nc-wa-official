@@ -36,6 +36,14 @@ export async function migrateInstagramOfficial() {
   );
   if (!postType.length)
     await db.query("ALTER TABLE instagram_posts ADD COLUMN media_type ENUM('IMAGE','REELS') NOT NULL DEFAULT 'IMAGE'");
+  // Carousel ditambahkan belakangan; MODIFY hanya dijalankan bila nilai enum belum ada agar migrasi tetap idempoten.
+  const [carouselType] = await db.query<any[]>(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='instagram_posts' AND COLUMN_NAME='media_type'",
+  );
+  if (!String(carouselType[0]?.COLUMN_TYPE).includes("'CAROUSEL'"))
+    await db.query(
+      "ALTER TABLE instagram_posts MODIFY media_type ENUM('IMAGE','REELS','CAROUSEL') NOT NULL DEFAULT 'IMAGE'",
+    );
 
   // Sesi Instagram resmi memakai tabel kanal yang sama dengan Zernio; bedanya provider dan tanpa akun Zernio.
   const [provider] = await db.query<any[]>(
