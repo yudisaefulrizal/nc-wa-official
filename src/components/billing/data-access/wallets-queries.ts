@@ -14,11 +14,15 @@ export function resetToBasic(c: Executor, params: SqlValue[]) {
     params,
   );
 }
+// `session_limit` yang dikembalikan sudah termasuk slot tambahan dari pemilik (`bonus_sessions`).
 export function find(c: Executor, params: SqlValue[]) {
   return c.execute<RowDataPacket[]>(
-    'SELECT period,balance,purchased,quota,session_limit,plan_id,expires_at FROM wallets WHERE account_id=?',
+    'SELECT period,balance,purchased,quota,session_limit+bonus_sessions AS session_limit,bonus_sessions,plan_id,expires_at FROM wallets WHERE account_id=?',
     params,
   );
+}
+export function setBonusSessions(c: Executor, params: SqlValue[]) {
+  return c.execute('UPDATE wallets SET bonus_sessions=? WHERE account_id=?', params);
 }
 export function renew(c: Executor, params: SqlValue[]) {
   return c.execute(

@@ -5,7 +5,7 @@ import { db } from '../../../libraries/db.js';
 import { digest } from '../../../libraries/security.js';
 import { ApiError } from '../../../libraries/errors.js';
 import { object, requiredString } from '../../../libraries/validation.js';
-import { sendBilled, ensureBasic } from '../../billing/index.js';
+import { sendBilled, assertSessionSlot } from '../../billing/index.js';
 import { readRecipient } from '../domain/messages.js';
 import { SessionManager } from '../domain/sessions.js';
 import type { TenantWebhooks } from '../domain/tenant-webhooks.js';
@@ -111,12 +111,10 @@ export function sessionRoutes(router: express.Router, { pending, hooks, media, s
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
-      const wallet = await ensureBasic(connection, res.locals.accountId);
       const m = res.locals.manager as SessionManager;
       if (m.list().some(s => s.id === req.body.id))
         throw new ApiError(409, 'session_exists', 'ID session sudah dipakai');
-      if (m.list().filter(s => s.serviceActive !== false).length >= wallet.session_limit)
-        throw new ApiError(409, 'session_limit', 'Batas nomor paket telah tercapai');
+      await assertSessionSlot(connection, res.locals.accountId, m);
       const result = await m.create(req.body.id);
       await connection.commit();
       res.json(result);

@@ -131,40 +131,39 @@ async function admin() {
     new Option('Pilih akun', ''),
     ...accounts.map(u => new Option(u.email, u.id)),
   );
-  table('accounts', ['Email', 'Peran', 'Status', 'Paket aktif', 'Sisa kredit pesan', 'Tindakan'], accounts, u => {
-    if (u.role === 'owner')
+  table(
+    'accounts',
+    ['Email', 'Peran', 'Status', 'Paket aktif', 'Slot sesi', 'Sisa kredit pesan', 'Tindakan'],
+    accounts,
+    u => {
+      const actions = document.createElement('div');
+      actions.className = 'row-actions';
+      if (u.role !== 'owner')
+        actions.append(
+          button(u.suspended ? 'Aktifkan' : 'Nonaktifkan', async () => {
+            await api('/api/admin/accounts/' + u.id + '/status', 'PUT', { suspended: !u.suspended });
+            await admin();
+          }),
+          button('Ganti password', async () => changePassword(u)),
+          button('Sesuaikan kredit pesan', async () => {
+            $('adjustform').reset();
+            $('adjustaccount').value = u.id;
+            $('adjustform-modal').showModal();
+            $('adjustform').elements.namedItem('amount').focus();
+          }),
+        );
+      actions.append(button('Atur slot sesi', async () => changeSlots(u)));
       return [
         u.email,
-        'Pemilik',
+        u.role === 'owner' ? 'Pemilik' : 'Pengguna',
         u.suspended ? 'Nonaktif' : 'Aktif',
         u.plan_name,
+        u.bonus_sessions ? `${u.session_limit} (+${u.bonus_sessions} tambahan)` : String(u.session_limit),
         new Intl.NumberFormat('id-ID').format(u.balance),
-        '—',
+        actions,
       ];
-    const actions = document.createElement('div');
-    actions.className = 'row-actions';
-    actions.append(
-      button(u.suspended ? 'Aktifkan' : 'Nonaktifkan', async () => {
-        await api('/api/admin/accounts/' + u.id + '/status', 'PUT', { suspended: !u.suspended });
-        await admin();
-      }),
-      button('Ganti password', async () => changePassword(u)),
-      button('Sesuaikan kredit pesan', async () => {
-        $('adjustform').reset();
-        $('adjustaccount').value = u.id;
-        $('adjustform-modal').showModal();
-        $('adjustform').elements.namedItem('amount').focus();
-      }),
-    );
-    return [
-      u.email,
-      'Pengguna',
-      u.suspended ? 'Nonaktif' : 'Aktif',
-      u.plan_name,
-      new Intl.NumberFormat('id-ID').format(u.balance),
-      actions,
-    ];
-  });
+    },
+  );
   const config = await api('/api/admin/midtrans');
   $('midtransstatus').textContent =
     `${config.configured ? 'Terkonfigurasi: ' + config.environment + ' · ' + config.serverKey : 'Belum dikonfigurasi'} · URL notifikasi: ${config.notificationUrl}`;
@@ -244,6 +243,24 @@ $('testmidtrans').onclick = () =>
   run(async () => {
     $('message').textContent = (await api('/api/admin/midtrans/test', 'POST')).message;
   });
+function changeSlots(account) {
+  $('slotform').reset();
+  $('slotaccount').value = account.id;
+  $('slotform').elements.namedItem('bonus').value = account.bonus_sessions;
+  $('slotform-info').textContent =
+    `${account.email} · paket ${account.plan_name} memberi ${account.session_limit - account.bonus_sessions} slot. ` +
+    'Slot tambahan tetap berlaku saat reset bulanan maupun ganti paket.';
+  $('slotform-modal').showModal();
+  $('slotform').elements.namedItem('bonus').focus();
+}
+form('slotform', async data => {
+  await api('/api/admin/accounts/' + encodeURIComponent(data.accountId) + '/session-bonus', 'PUT', {
+    bonus: Number(data.bonus),
+  });
+  $('slotform-modal').close();
+  $('message').textContent = 'Slot sesi tambahan tersimpan.';
+  await admin();
+});
 let adjustment;
 form('adjustform', async data => {
   const payload = JSON.stringify(data);

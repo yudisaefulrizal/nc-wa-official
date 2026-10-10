@@ -6,7 +6,7 @@ import { db } from '../../../libraries/db.js';
 import { decrypt } from '../../../libraries/crypto.js';
 import { ApiError } from '../../../libraries/errors.js';
 import { object } from '../../../libraries/validation.js';
-import { ensureBasic } from '../../billing/index.js';
+import { assertSessionSlot as assertSharedSlot } from '../../billing/index.js';
 import { SessionManager } from '../../whatsapp/index.js';
 import { listInstagramAccounts } from './zernio-client.js';
 import { owned } from './zernio-accounts.js';
@@ -40,8 +40,7 @@ export async function connectInstagram(account: string, manager: SessionManager,
     );
   await channelsSql.insert(db, [account, session, row.id, found._id, username]);
   try {
-    await assertSessionSlot(account, manager);
-    await manager.create(session, 'instagram');
+    await createSessionWithSlot(account, manager, session);
   } catch (error) {
     await channelsSql.deleteBySession(db, [account, session]);
     throw error;
@@ -88,14 +87,27 @@ export async function assertSessionSlot(account: string, manager: SessionManager
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    const wallet = await ensureBasic(connection, account);
+    await assertSharedSlot(connection, account, manager);
     await connection.commit();
-    if (manager.list().filter(s => s.serviceActive !== false).length >= wallet.session_limit)
-      throw new ApiError(409, 'session_limit', 'Batas nomor paket telah tercapai');
   } catch (error) {
     await connection.rollback();
     throw error;
   } finally {
     connection.release();
+  }
+}
+// Pemeriksaan dan pemasangan ditahan dalam satu kunci akun agar callback TikTok paralel tidak memakai slot yang sama.
+export async function createSessionWithSlot(account: string, manager: SessionManager, session: string) {
+  const c = await db.getConnection();
+  try {
+    await c.beginTransaction();
+    await assertSharedSlot(c, account, manager);
+    await manager.create(session, 'instagram');
+    await c.commit();
+  } catch (error) {
+    await c.rollback();
+    throw error;
+  } finally {
+    c.release();
   }
 }

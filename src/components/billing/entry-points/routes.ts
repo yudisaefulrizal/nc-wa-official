@@ -5,6 +5,7 @@ import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { db } from '../../../libraries/db.js';
 import { basicWallet, ensureBasic, planInput } from '../domain/plans.js';
+import { chatSessionLimit, setSessionBonus } from '../domain/session-slots.js';
 import { ApiError } from '../../../libraries/errors.js';
 import * as auditEventsSql from '../data-access/audit-events-queries.js';
 import * as billingSettingsSql from '../data-access/billing-settings-queries.js';
@@ -70,8 +71,10 @@ export function billingRoutes(
   // wa_credit_price adalah harga per 100 kredit pesan hasil beli; 0 berarti pemilik belum menetapkannya.
   app.get('/api/wallet', async (_req, res) => {
     const [settings] = await billingSettingsSql.find(db);
+    const wallet = await basicWallet(res.locals.account.id);
     res.json({
-      ...(await basicWallet(res.locals.account.id)),
+      ...wallet,
+      chat_session_limit: await chatSessionLimit(res.locals.account.id, wallet.session_limit),
       wa_credit_price: Number(settings[0]?.wa_credit_price ?? 0),
       wa_credit_unit: 100,
     });
@@ -81,8 +84,24 @@ export function billingRoutes(
     res.json(plans);
   });
 }
-// Halaman pemilik: penyesuaian kredit, semua pembayaran, pengaturan Midtrans, dan katalog paket.
-export function billingAdminRoutes(app: express.Express, { payments }: { payments: Payments }) {
+// Halaman pemilik: penyesuaian kredit dan slot sesi, semua pembayaran, pengaturan Midtrans, dan katalog paket.
+export function billingAdminRoutes(
+  app: express.Express,
+  { payments, gateway }: { payments: Payments; gateway: { refresh(): Promise<void> } },
+) {
+  // Slot sesi tambahan di luar paket, misalnya untuk akun internal; nilainya ditetapkan, bukan ditambahkan.
+  app.put('/api/admin/accounts/:id/session-bonus', async (req, res) => {
+    const bonus = req.body?.bonus;
+    if (!Number.isSafeInteger(bonus) || bonus < 0 || bonus > 1000)
+      throw new ApiError(400, 'invalid_request', 'Slot tambahan harus bilangan bulat 0–1000');
+    await setSessionBonus(req.params.id, bonus, res.locals.account.id).catch(e => {
+      throw e instanceof Error && e.message === 'account_not_found'
+        ? new ApiError(404, 'account_not_found', 'Akun tidak ditemukan')
+        : e;
+    });
+    await gateway.refresh();
+    res.json({ ok: true });
+  });
   app.post('/api/admin/accounts/:id/credits', async (req, res) => {
     const { amount, reason, requestId } = req.body ?? {};
     if (

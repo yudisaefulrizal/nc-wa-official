@@ -1,4 +1,4 @@
-// Asisten AI, daftar sesi: kartu sesi WhatsApp dan Instagram dalam grid, kartu tambah sesi, dan tautan tingkatkan paket.
+// Asisten AI, daftar sesi: kartu WhatsApp, Instagram, dan koneksi konten TikTok; tambah sesi dan tingkatkan paket.
 // Mengeklik kartu memilih sesi yang disunting di bawahnya; saklar AI tiap kartu bisa dipakai langsung.
 const addIcon =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
@@ -48,7 +48,13 @@ function buildAddCard(remaining) {
   card.append(
     icon,
     element('strong', '', full ? 'Tingkatkan paket' : 'Tambah sesi'),
-    element('small', '', full ? 'Slot sesi di paket kamu sudah penuh.' : 'WhatsApp atau Instagram. Sisa ' + remaining + ' slot di paket kamu.'),
+    element(
+      'small',
+      '',
+      full
+        ? 'Slot sesi di paket kamu sudah penuh.'
+        : 'WhatsApp, Instagram, atau TikTok. Sisa ' + remaining + ' slot di paket kamu.',
+    ),
   );
   card.onclick = () => {
     if (full) return goToPlans();
@@ -196,6 +202,10 @@ function buildSessionCard(s) {
   return card;
 }
 function renderSessionCards() {
-  const limit = Math.max(1, aiSessionLimit - hiddenSessionCount);
-  $('ai-session-cards').replaceChildren(...aiSessions.map(buildSessionCard), buildAddCard(limit - aiSessions.length));
+  const limit = Math.max(0, aiSessionLimit - hiddenSessionCount);
+  $('ai-session-cards').replaceChildren(
+    ...aiSessions.map(buildSessionCard),
+    ...aiTikTokConnections.map(buildTikTokSessionCard),
+    buildAddCard(limit - aiSessions.length),
+  );
 }

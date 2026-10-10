@@ -3,7 +3,7 @@
 import { db } from '../../../libraries/db.js';
 import { ApiError } from '../../../libraries/errors.js';
 import type { SessionManager } from '../../whatsapp/index.js';
-import { assertSessionSlot } from './connect-flow.js';
+import { assertSessionSlot, createSessionWithSlot } from './connect-flow.js';
 import * as channelsSql from '../data-access/channels-queries.js';
 import * as officialSql from '../data-access/official-queries.js';
 
@@ -39,8 +39,7 @@ export async function attachOfficialSession(account: string, manager: SessionMan
   );
   await channelsSql.insertOfficial(db, [account, session, igUser, row.username]);
   try {
-    await assertSessionSlot(account, manager);
-    await manager.create(session, 'instagram');
+    await createSessionWithSlot(account, manager, session);
   } catch (error) {
     await channelsSql.deleteBySession(db, [account, session]);
     throw error;

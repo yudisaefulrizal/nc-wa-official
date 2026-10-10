@@ -1600,6 +1600,10 @@
                   ><strong>Instagram</strong><small>Masuk dengan akun Instagram Bisnis atau Kreator Anda.</small></span
                 ></label
               ><label class="session-kind"
+                ><input type="radio" name="kind" value="tiktok" /><span
+                  ><strong>TikTok</strong><small>Masuk dengan akun TikTok untuk mengelola konten Anda.</small></span
+                ></label
+              ><label class="session-kind"
                 ><input type="radio" name="kind" value="instagram" /><span
                   ><strong>Instagram lewat Zernio</strong
                   ><small>Memakai akun Zernio Anda; balasan memakai kredit yang sama dengan WhatsApp.</small></span
@@ -2366,6 +2370,26 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
               ><button>Simpan penyesuaian kredit pesan</button>
             </form>
           </dialog>
+          <dialog id="slotform-modal" aria-labelledby="slotform-title">
+            <div class="modal-heading">
+              <h2 id="slotform-title">Slot sesi tambahan</h2>
+              <button type="button" class="secondary" data-close="slotform-modal" aria-label="Tutup modal">
+                Tutup
+              </button>
+            </div>
+            <p id="slotform-info"></p>
+            <form id="slotform">
+              <input type="hidden" name="accountId" id="slotaccount" /><label
+                >Slot tambahan di luar paket (0 untuk menghapus)<input
+                  name="bonus"
+                  type="number"
+                  min="0"
+                  max="1000"
+                  step="1"
+                  required /></label
+              ><button>Simpan slot sesi</button>
+            </form>
+          </dialog>
           <section class="admin-page" id="admin-ai" hidden>
             <h2>Pengaturan AI</h2>
             <p id="ai-config-status"></p>
@@ -2662,6 +2686,7 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
     <script src="/dashboard/js/core.js" defer></script>
     <script src="/dashboard/js/pages/instagram.js" defer></script>
     <script src="/dashboard/js/pages/integrasi.js" defer></script>
+    <script src="/dashboard/js/pages/tiktok.js" defer></script>
     <script src="/dashboard/js/pages/integrasi-keys.js" defer></script>
     <script src="/dashboard/js/pages/chat.js" defer></script>
     <script src="/dashboard/js/pages/paket.js" defer></script>

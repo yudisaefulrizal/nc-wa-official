@@ -21,6 +21,7 @@ import { referral as defaultReferral, referralRoutes, referralAdminRoutes } from
 import { publicAccountRoutes, sessionAuth, accountRoutes, accountAdminRoutes } from '../components/account/index.js';
 import { billingPublicRoutes, billingRoutes, billingAdminRoutes } from '../components/billing/index.js';
 import { assetPublicRoutes } from '../components/auto-share/index.js';
+import { tiktokPublicRoutes, tiktokRoutes } from '../components/tiktok/index.js';
 import {
   instagram,
   instagramApiRoutes,
@@ -46,6 +47,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   app.use(helmet());
   // Webhook Zernio membaca body mentah untuk tanda tangannya, jadi dipasang sebelum parser JSON.
   instagramPublicRoutes(app, { instagram });
+  tiktokPublicRoutes(app, gateway);
   // Definisi graf Editor profil bisa jauh melewati 16 KB.
   const normalJson = express.json({ limit: '16kb' }),
     builderJson = express.json({ limit: '128kb' });
@@ -90,6 +92,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   builderAccountRoutes(app);
   contentAccountRoutes(app);
   instagramRoutes(app, { instagram });
+  tiktokRoutes(app);
   instagramKeyRoutes(app);
   referralRoutes(app, { referral });
   app.use('/api/admin', (_req, res, next) => {
@@ -100,7 +103,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
     next();
   });
   accountAdminRoutes(app, { gateway });
-  billingAdminRoutes(app, { payments });
+  billingAdminRoutes(app, { payments, gateway });
   aiAdminRoutes(app);
   builderAdminRoutes(app);
   contentAdminRoutes(app);

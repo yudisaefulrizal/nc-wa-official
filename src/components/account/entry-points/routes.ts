@@ -190,6 +190,8 @@ export function accountAdminRoutes(
         plan_id: wallet.plan_id,
         plan_name: names.get(wallet.plan_id) ?? wallet.plan_id,
         balance: wallet.balance,
+        session_limit: wallet.session_limit,
+        bonus_sessions: wallet.bonus_sessions,
         expires_at: wallet.expires_at,
       });
     }

@@ -66,6 +66,10 @@
   background: #fdecef;
   color: #b4234f;
 }
+.ai-session-avatar.tiktok {
+  background: #17231f;
+  color: #fff;
+}
 .ai-session-card-name {
   display: flex;
   flex-direction: column;

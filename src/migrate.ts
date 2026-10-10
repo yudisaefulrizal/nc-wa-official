@@ -5,6 +5,7 @@ import { migrateAI } from './components/ai/index.js';
 import { migrateReferral } from './components/referral/index.js';
 import { migrateInstagram, migrateInstagramOfficial } from './components/instagram/index.js';
 import { db } from './libraries/db.js';
+import { migrateTikTok } from './components/tiktok/index.js';
 
 try {
   await db.query(
@@ -91,11 +92,14 @@ try {
   await db.query(
     "UPDATE plans SET max_share_assets=10,max_share_storage_bytes=52428800 WHERE id='basic' AND max_share_assets=20 AND max_share_storage_bytes=104857600",
   );
+  // Slot sesi tambahan yang diberikan pemilik secara manual; tidak ikut reset bulanan maupun pergantian paket.
+  await column('wallets', 'bonus_sessions', 'INT UNSIGNED NOT NULL DEFAULT 0');
   await migrateAI();
   await migrateAutoShare();
   await migrateReferral();
   await migrateInstagram();
   await migrateInstagramOfficial();
+  await migrateTikTok();
   console.log('Migrasi fondasi dan AI selesai.');
 } finally {
   await db.end();

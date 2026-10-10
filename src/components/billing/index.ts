@@ -4,5 +4,6 @@ export { recoverReservations } from './domain/credits.js';
 export { sendBilled } from './domain/outbound.js';
 export { Payments } from './domain/payments.js';
 export { basicWallet, ensureBasic } from './domain/plans.js';
+export { assertSessionSlot, chatSessionLimit } from './domain/session-slots.js';
 export { startBasicScheduler } from './domain/scheduler.js';
 export { billingAdminRoutes, billingPublicRoutes, billingRoutes } from './entry-points/routes.js';

@@ -198,7 +198,7 @@ async function wallet() {
     ? 'Berakhir ' + new Date(w.expires_at).toLocaleDateString('id-ID')
     : 'Reset setiap tanggal 1';
   $('wallet').textContent =
-    `${w.plan_id} · ${w.balance} kredit tersedia · ${w.session_limit} sesi · ${w.expires_at ? 'berakhir ' + new Date(w.expires_at).toLocaleString('id-ID') : 'reset tanggal 1, 00.00 WIB'}`;
+    `${w.plan_id} · ${w.balance} kredit tersedia · ${w.session_limit} sesi${w.bonus_sessions ? ` (termasuk ${w.bonus_sessions} slot tambahan)` : ''} · ${w.expires_at ? 'berakhir ' + new Date(w.expires_at).toLocaleString('id-ID') : 'reset tanggal 1, 00.00 WIB'}`;
 }
 function updateActivePlan() {
   document.querySelectorAll('#catalog [data-plan-id]').forEach(card => {
@@ -753,6 +753,7 @@ $('refreshsessions').onclick = () => run(sessions);
 $('refreshusage').onclick = () => run(usage);
 form('sessionform', async data => {
   if (data.kind === 'instagram-official') return startInstagramLogin();
+  if (data.kind === 'tiktok') return startTikTokLogin();
   if (data.kind === 'instagram') return connectInstagram(data.id, data.zernioId, data.instagramId);
   await api('/sessions', 'POST', { id: data.id });
   await sessions();

@@ -1,4 +1,8 @@
 /* Halaman Integrasi: jatah sesi, peringatan koneksi terputus, daftar koneksi semua platform, dan akun penyedia. */
+.integration-icon.tiktok {
+  background: #17231f;
+  color: #fff;
+}
 #integrasi {
   display: grid;
   gap: 18px;

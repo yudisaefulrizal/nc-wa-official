@@ -31,7 +31,7 @@ import type { RowDataPacket } from 'mysql2/promise';
 import { db } from '../libraries/db.js';
 import { digest } from '../libraries/security.js';
 import { storagePaths, storageRoot } from '../libraries/storage.js';
-import { basicWallet } from '../components/billing/index.js';
+import { basicWallet, chatSessionLimit } from '../components/billing/index.js';
 import { ApiError } from '../libraries/errors.js';
 import { referral as defaultReferral } from '../components/referral/index.js';
 import { accountByApiKeyHash, accountByLoginToken, accountStatus, activeAccount } from '../components/account/index.js';
@@ -103,7 +103,7 @@ export function createGateway(
               await result.applyLimit(0);
               throw new ApiError(403, 'account_suspended', 'Akun dinonaktifkan');
             }
-            await result.applyLimit((await basicWallet(id)).session_limit);
+            await result.applyLimit(await chatSessionLimit(id, (await basicWallet(id)).session_limit));
           };
           result.onOutgoing = async (session, message) => {
             const { download, pushName, filename, ...data } = message;
@@ -171,7 +171,7 @@ export function createGateway(
           };
           try {
             await files.prune();
-            await result.restore((await basicWallet(id)).session_limit);
+            await result.restore(await chatSessionLimit(id, (await basicWallet(id)).session_limit));
             return result;
           } catch (error) {
             await result.stop();
@@ -248,7 +248,9 @@ export function createGateway(
     for (const [id, pending] of managers) {
       const m = await pending;
       const [rows] = await accountStatus(id);
-      await m.applyLimit(!rows[0] || rows[0].suspended ? 0 : (await basicWallet(id)).session_limit);
+      await m.applyLimit(
+        !rows[0] || rows[0].suspended ? 0 : await chatSessionLimit(id, (await basicWallet(id)).session_limit),
+      );
       await media.get(id)?.prune();
     }
   }

@@ -1,12 +1,14 @@
 // Halaman Integrasi: semua koneksi (sesi WhatsApp, Instagram lewat Zernio, dan Instagram Login resmi) sebagai kisi
 // kartu. Rantai hijau menyatu = terhubung, rantai abu-abu terputus = terputus. Kartu dibuka untuk melihat dan
 // menjalankan tindakan; akun penyedia (Zernio) ada di bawah kisi.
-const integrations = { sessions: [], official: [], limit: 0 };
+const integrations = { sessions: [], official: [], tiktok: [], limit: 0 };
 const chainPaths = {
   on: 'M9 17H7A5 5 0 017 7h2M15 7h2a5 5 0 010 10h-2M8 12h8',
   off: 'M8 17H7A5 5 0 017 7h1M16 7h1a5 5 0 010 10h-1',
 };
 const integrationIcons = {
+  tiktok:
+    '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v12.5a4.5 4.5 0 1 1-4-4.47M14 3c0 4 2.5 6 6 6V5c-2.5 0-4-1-4-2z"/></svg>',
   whatsapp:
     '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1112 20a8 8 0 01-4.1-1.1z"/></svg>',
   instagram:
@@ -40,16 +42,18 @@ function showInstagramResult() {
   history.replaceState(null, '', location.pathname + (params.size ? '?' + params : ''));
 }
 async function loadIntegrations() {
-  const [rows, wallet, official] = await Promise.all([
+  const [rows, wallet, official, tiktok] = await Promise.all([
     fetchSessions(),
     api('/api/wallet'),
     api('/api/instagram/official'),
+    api('/api/tiktok/connections'),
     loadZernio(),
     // Daftar key hanya pelengkap: gagal memuatnya tidak boleh menahan kisi koneksi dan tombol tambah sesi.
     loadInstagramKeys().catch(() => {}),
   ]);
   integrations.sessions = rows;
   integrations.official = official;
+  integrations.tiktok = tiktok;
   integrations.limit = wallet.session_limit;
   renderIntegrations();
 }
@@ -107,7 +111,7 @@ function integrationItems() {
       ai: s ? aiLine(s) : '',
     };
   });
-  return [...sessions, ...official];
+  return [...sessions, ...official, ...tiktokIntegrationItems()];
 }
 function aiLine(s) {
   return s.aiProfile ? s.aiProfile.name + (s.aiEnabled ? ' · AI aktif' : ' · AI mati') : 'Profil AI belum dipasang';
@@ -140,7 +144,7 @@ function integrationAddCard(remaining) {
       '',
       full
         ? 'Slot sesi di paket kamu sudah penuh.'
-        : 'WhatsApp atau Instagram. Sisa ' + remaining + ' slot di paket kamu.',
+        : 'WhatsApp, Instagram, atau TikTok. Sisa ' + remaining + ' slot di paket kamu.',
     ),
   );
   card.onclick = () => {
@@ -158,7 +162,10 @@ function integrationAddCard(remaining) {
   return wrap;
 }
 function renderIntegrations() {
-  const active = integrations.sessions.filter(s => s.serviceActive !== false).length + hiddenSessionCount;
+  const active =
+    integrations.sessions.filter(s => s.serviceActive !== false).length +
+    hiddenSessionCount +
+    integrations.tiktok.filter(s => s.serviceActive !== false).length;
   $('integrations-quota').textContent = active + ' dari ' + integrations.limit + ' sesi';
   const items = integrationItems();
   const tiles = items.map(item => {
@@ -187,6 +194,7 @@ function renderIntegrations() {
   else $('integration-dialog').close();
 }
 function integrationKey(item) {
+  if (item.kind === 'tiktok') return 'tiktok:' + item.tiktok.id;
   return item.kind === 'official' ? 'official:' + item.official.id : 'session:' + item.session.id;
 }
 async function refreshIntegrations() {
@@ -205,7 +213,11 @@ function openIntegration(item) {
   status.append(chainIcon(item.connected, item.label), element('span', '', item.label));
   const lines = [item.method, item.ai].filter(Boolean).map(text => element('p', 'hint', text));
   const actions =
-    item.kind === 'official' ? officialActions(item.official) : integrationActions(item.session, item.platform);
+    item.kind === 'tiktok'
+      ? tiktokActions(item.tiktok)
+      : item.kind === 'official'
+        ? officialActions(item.official)
+        : integrationActions(item.session, item.platform);
   $('integration-dialog-body').replaceChildren(status, ...lines, actions);
   if (!dialog.open) dialog.showModal();
 }
