@@ -592,6 +592,13 @@ test('Carousel API: item berurutan, container induk dengan caption, publish seka
     const result = await external('post', '/posts').send(body).expect(202);
     assert.equal(result.body.status, 'processing');
     assert.equal(result.body.mediaType, 'CAROUSEL');
+    await api('post', '/api/instagram/test-post')
+      .send({ ...body, consent: true })
+      .expect(202);
+    assert.equal(
+      (await api('get', '/api/instagram/posts?page=1')).body.items.some((p: any) => p.request_id === body.requestId),
+      true,
+    );
     // Tiga item carousel lalu satu container induk.
     assert.equal(submissions.length, 4);
     const items = submissions.slice(0, 3),
@@ -645,4 +652,43 @@ test('Carousel API: item berurutan, container induk dengan caption, publish seka
     containerStatus = 'FINISHED';
     restore.mock.restore();
   }
+});
+
+test('log posting mencakup API/dashboard, terpisah per pemilik, dan tidak memuat token atau caption', async () => {
+  const body = payload();
+  await api('post', '/api/instagram/posts').send(body).expect(200);
+  await rememberMedia();
+  const own = await api('get', '/api/instagram/posts?page=1').expect(200);
+  assert.ok(own.body.items.some((p: any) => p.request_id === body.requestId));
+  assert.ok(!JSON.stringify(own.body).includes('post-token'));
+  assert.ok(!JSON.stringify(own.body).includes(body.caption));
+  const other = await api('get', '/api/instagram/posts?page=1', 1).expect(200);
+  assert.ok(!other.body.items.some((p: any) => p.request_id === body.requestId));
+  await api('get', '/api/instagram/posts?page=0').expect(400);
+  await request(app).get('/api/instagram/posts').expect(401);
+});
+test('Test Post membutuhkan konfirmasi eksplisit dan URL publik, tidak memakai file dashboard', async () => {
+  const before = created;
+  await api('post', '/api/instagram/test-post')
+    .send({ ...payload(), consent: false })
+    .expect(400);
+  await api('post', '/api/instagram/test-post')
+    .send({ ...payload(), consent: true })
+    .expect(400);
+  assert.equal(created, before);
+});
+test('error persiapan posting tersimpan dengan pesan aman untuk log', async () => {
+  const body = payload();
+  containerFailure = true;
+  try {
+    await api('post', '/api/instagram/posts').send(body).expect(502);
+  } finally {
+    containerFailure = false;
+  }
+  await rememberMedia();
+  const result = await api('get', '/api/instagram/posts?page=1').expect(200);
+  const row = result.body.items.find((p: any) => p.request_id === body.requestId);
+  assert.equal(row.status, 'failed');
+  assert.equal(row.error_code, 'instagram_post_failed');
+  assert.match(row.error_message, /Instagram belum/);
 });

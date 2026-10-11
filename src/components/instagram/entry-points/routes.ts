@@ -5,7 +5,13 @@ import { rateLimit } from 'express-rate-limit';
 import { ApiError } from '../../../libraries/errors.js';
 import { getOfficialVideo } from '../domain/official-video.js';
 import { getOfficialMedia } from '../domain/official-messaging.js';
-import { createOfficialPost, officialPost, advanceOfficialPost } from '../domain/official-posts.js';
+import {
+  createOfficialPost,
+  officialPost,
+  advanceOfficialPost,
+  listOfficialPosts,
+  refreshOfficialPostLog,
+} from '../domain/official-posts.js';
 import type { Instagram } from '../domain/instagram.js';
 
 // Didaftarkan sebelum parser JSON global: tanda tangan webhook dihitung dari body mentah.
@@ -84,6 +90,20 @@ export function instagramPublicRoutes(app: express.Express, { instagram }: { ins
   });
 }
 export function instagramRoutes(app: express.Express, { instagram }: { instagram: Instagram }) {
+  app.get('/api/instagram/posts', async (req, res) =>
+    res.json(await listOfficialPosts(res.locals.account.id, req.query.page ?? '1')),
+  );
+  app.post('/api/instagram/test-post', async (req, res) => {
+    if (req.body?.consent !== true)
+      throw new ApiError(400, 'invalid_request', 'Konfirmasi posting sungguhan terlebih dahulu.');
+    if (req.body?.fileId !== undefined)
+      throw new ApiError(400, 'invalid_request', 'Gunakan URL media publik untuk Test Post.');
+    const post = await createOfficialPost(res.locals.account.id, req.body);
+    res.status(post.status === 'published' ? 200 : 202).json(post);
+  });
+  app.post('/api/instagram/posts/:id/refresh-log', async (req, res) =>
+    res.json(await refreshOfficialPostLog(res.locals.account.id, req.params.id)),
+  );
   app.post('/api/instagram/posts', async (req, res) => {
     if (req.body?.videoUrl !== undefined || (req.body?.mediaType !== undefined && req.body.mediaType !== 'IMAGE'))
       throw new ApiError(400, 'invalid_request', 'Dashboard hanya mendukung posting gambar.');

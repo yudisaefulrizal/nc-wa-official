@@ -112,6 +112,7 @@ export async function createOfficialPost(account: string, body: unknown) {
     await postsSql.prepared(db, [container.id, account, requestId]);
   } catch (error) {
     await postsSql.fail(db, [account, requestId]);
+    await rememberPostError(account, requestId, error);
     if (video) await outboundVideo.remove(video);
     throw error;
   } finally {
@@ -127,15 +128,30 @@ export async function officialPost(account: string, request: unknown) {
   if (!row) throw new ApiError(404, 'not_found', 'Permintaan posting tidak ditemukan.');
   // Setelah crash, jangan menerbitkan lagi kiriman yang mungkin sudah diterima Meta.
   const age = Date.now() - new Date(row.updated_at).getTime();
-  if (row.status === 'publishing' && age > 60000) await postsSql.uncertain(db, [account, requestId]);
+  if (row.status === 'publishing' && age > 60000) {
+    await postsSql.uncertain(db, [account, requestId]);
+    await postsSql.recordError(db, [
+      'publication_unknown',
+      'Hasil penerbitan belum pasti. Periksa akun Instagram sebelum mengirim ulang.',
+      account,
+      requestId,
+    ]);
+  }
   // Carousel mengunduh dan mendaftarkan hingga 10 gambar, jadi diberi waktu persiapan seperti Reels.
   const reels = row.media_type === 'REELS',
     carousel = row.media_type === 'CAROUSEL';
   if (
     (row.status === 'preparing' && age > (reels || carousel ? 5 : 1) * 60000) ||
     (row.status === 'processing' && age > (reels ? 30 : carousel ? 10 : 5) * 60000)
-  )
+  ) {
     await postsSql.fail(db, [account, requestId]);
+    await postsSql.recordError(db, [
+      'preparation_timeout',
+      'Persiapan media melewati batas waktu.',
+      account,
+      requestId,
+    ]);
+  }
   return postView((await findPost(account, requestId))!);
 }
 
@@ -148,6 +164,12 @@ export async function advanceOfficialPost(account: string, request: unknown) {
   const container = await metaRequest(String(row.container_id) + '?fields=status_code', token);
   if (['ERROR', 'EXPIRED'].includes(String(container.status_code))) {
     await postsSql.fail(db, [account, requestId]);
+    await postsSql.recordError(db, [
+      'container_failed',
+      'Instagram menolak media atau container sudah kedaluwarsa.',
+      account,
+      requestId,
+    ]);
     return officialPost(account, requestId);
   }
   if (container.status_code !== 'FINISHED') return current;
@@ -159,7 +181,8 @@ export async function advanceOfficialPost(account: string, request: unknown) {
     });
     if (typeof result.id !== 'string' || !/^\d+$/.test(result.id)) throw metaError();
     await postsSql.finish(db, [result.id, account, requestId]);
-  } catch {
+  } catch (error) {
+    await rememberPostError(account, requestId, error);
     // Timeout/5xx bisa terjadi setelah Meta menerbitkan. Status belum pasti selalu memerlukan pemeriksaan akun.
     await postsSql.uncertain(db, [account, requestId]);
   }
@@ -227,4 +250,49 @@ function metaError() {
     'instagram_post_failed',
     'Instagram belum dapat memproses posting. Periksa koneksi dan izin akun.',
   );
+}
+
+async function rememberPostError(account: string, requestId: string, error: unknown) {
+  // Provider bodies, media URLs and tokens must never enter the log.
+  const code = error instanceof ApiError ? error.code : 'post_failed';
+  const message = error instanceof ApiError ? error.message : 'Posting gagal diproses. Periksa log server.';
+  await postsSql.recordError(db, [code.slice(0, 64), message.slice(0, 500), account, requestId]);
+}
+export async function listOfficialPosts(account: string, value: unknown = '1') {
+  if (typeof value !== 'string' || !/^\d{1,9}$/.test(value) || Number(value) < 1)
+    throw new ApiError(400, 'invalid_request', 'Halaman tidak valid');
+  const [counts] = await postsSql.count(db, [account]);
+  const total = Number(counts[0].total),
+    pages = Math.max(1, Math.ceil(total / 20)),
+    page = Math.min(Number(value), pages);
+  const [items] = await postsSql.list(db, [account, (page - 1) * 20]);
+  return { items, page, pages, total };
+}
+export async function refreshOfficialPostLog(account: string, request: unknown) {
+  const post = await advanceOfficialPost(account, request);
+  if (post.status === 'published' && post.mediaId) {
+    try {
+      const row = (await findPost(account, post.requestId))!;
+      const token = await officialToken(
+        account,
+        String(row.ig_user_id),
+        publishPermission,
+        'instagram_publish_permission',
+      );
+      const media = await metaRequest(post.mediaId + '?fields=permalink', token);
+      if (typeof media.permalink === 'string') {
+        const url = new URL(media.permalink);
+        if (
+          url.protocol === 'https:' &&
+          ['instagram.com', 'www.instagram.com'].includes(url.hostname) &&
+          !url.username &&
+          !url.password
+        )
+          await postsSql.permalink(db, [url.href.slice(0, 500), account, post.requestId]);
+      }
+    } catch {
+      /* A missing link must not change publication status. */
+    }
+  }
+  return post;
 }

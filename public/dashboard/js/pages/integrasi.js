@@ -56,6 +56,10 @@ async function loadIntegrations() {
   integrations.tiktok = tiktok;
   integrations.limit = wallet.session_limit;
   renderIntegrations();
+  loadIntegrationPostAccounts();
+  await loadIntegrationPosts().catch(error => {
+    $('ig-post-log-message').textContent = error.message;
+  });
 }
 function platformOf(s) {
   return s.channel === 'instagram' ? 'instagram' : 'whatsapp';

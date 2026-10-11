@@ -44,3 +44,22 @@ export function uncertain(c: Executor, params: SqlValue[]) {
     params,
   );
 }
+
+export function list(c: Executor, params: SqlValue[]) {
+  return c.execute<RowDataPacket[]>(
+    'SELECT p.request_id,p.ig_user_id,p.media_type,p.status,p.media_id,p.created_at,p.updated_at,p.error_code,p.error_message,p.permalink,o.username FROM instagram_posts p LEFT JOIN instagram_official o ON o.account_id=p.account_id AND o.ig_user_id=p.ig_user_id WHERE p.account_id=? ORDER BY p.created_at DESC,p.request_id LIMIT 20 OFFSET ?',
+    params,
+  );
+}
+export function count(c: Executor, params: SqlValue[]) {
+  return c.execute<RowDataPacket[]>('SELECT COUNT(*) AS total FROM instagram_posts WHERE account_id=?', params);
+}
+export function recordError(c: Executor, params: SqlValue[]) {
+  return c.execute(
+    'UPDATE instagram_posts SET error_code=?,error_message=? WHERE account_id=? AND request_id=?',
+    params,
+  );
+}
+export function permalink(c: Executor, params: SqlValue[]) {
+  return c.execute('UPDATE instagram_posts SET permalink=? WHERE account_id=? AND request_id=?', params);
+}

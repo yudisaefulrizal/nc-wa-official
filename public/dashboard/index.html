@@ -1880,6 +1880,56 @@
             <p class="hint">Aplikasi lain memakai akun Instagram yang terhubung di sini lewat key ini.</p>
             <div id="ig-keys" class="ig-keys"></div>
           </section>
+          <section class="integrations-card" aria-labelledby="ig-test-title">
+            <h3 id="ig-test-title">Test Post</h3>
+            <form id="ig-test-form">
+              <label>Akun Instagram<select id="ig-test-account" required></select></label>
+              <label
+                >Jenis posting<select id="ig-test-type">
+                  <option value="IMAGE">Satu gambar</option>
+                  <option value="CAROUSEL">Carousel</option>
+                  <option value="REELS">Reels</option>
+                </select></label
+              >
+              <label>URL media publik<textarea id="ig-test-media" required placeholder="https://…"></textarea></label>
+              <small id="ig-test-media-hint" class="hint">Satu URL gambar publik.</small>
+              <label>Caption<textarea id="ig-test-caption" maxlength="4400"></textarea></label>
+              <label
+                ><input type="checkbox" id="ig-test-consent" required /> Saya setuju menerbitkan posting sungguhan ke
+                akun yang dipilih.</label
+              >
+              <button type="submit" id="ig-test-submit">Kirim posting sungguhan</button>
+              <p id="ig-test-status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+          <section class="integrations-card" aria-labelledby="ig-post-log-title">
+            <div class="integration-heading">
+              <h3 id="ig-post-log-title">Log Post</h3>
+              <button type="button" id="ig-post-log-reload" class="secondary">Perbarui</button>
+            </div>
+            <p id="ig-post-log-message" role="status"></p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Akun</th>
+                    <th>Jenis</th>
+                    <th>Waktu</th>
+                    <th>Status</th>
+                    <th>ID permintaan</th>
+                    <th>Detail</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="ig-post-log"></tbody>
+              </table>
+            </div>
+            <div class="integrations-buttons">
+              <button type="button" id="ig-post-log-prev" class="secondary">Sebelumnya</button
+              ><span id="ig-post-log-page"></span
+              ><button type="button" id="ig-post-log-next" class="secondary">Berikutnya</button>
+            </div>
+          </section>
         </section>
         <section id="api-integrasi" hidden>
           <div class="section-lead">
@@ -2686,6 +2736,7 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
     <script src="/dashboard/js/core.js" defer></script>
     <script src="/dashboard/js/pages/instagram.js" defer></script>
     <script src="/dashboard/js/pages/integrasi.js" defer></script>
+    <script src="/dashboard/js/pages/integrasi-posts.js" defer></script>
     <script src="/dashboard/js/pages/tiktok.js" defer></script>
     <script src="/dashboard/js/pages/integrasi-keys.js" defer></script>
     <script src="/dashboard/js/pages/chat.js" defer></script>

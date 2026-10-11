@@ -45,6 +45,18 @@ export async function migrateInstagramOfficial() {
       "ALTER TABLE instagram_posts MODIFY media_type ENUM('IMAGE','REELS','CAROUSEL') NOT NULL DEFAULT 'IMAGE'",
     );
 
+  for (const [name, definition] of [
+    ['error_code', 'VARCHAR(64) NULL'],
+    ['error_message', 'VARCHAR(500) NULL'],
+    ['permalink', 'VARCHAR(500) NULL'],
+  ]) {
+    const [columns] = await db.query<any[]>(
+      "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='instagram_posts' AND COLUMN_NAME=?",
+      [name],
+    );
+    if (!columns.length) await db.query(`ALTER TABLE instagram_posts ADD COLUMN ${name} ${definition}`);
+  }
+
   // Sesi Instagram resmi memakai tabel kanal yang sama dengan Zernio; bedanya provider dan tanpa akun Zernio.
   const [provider] = await db.query<any[]>(
     "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='instagram_channels' AND COLUMN_NAME='provider'",

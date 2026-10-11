@@ -48,3 +48,9 @@ Reels hanya menerima URL HTTP/HTTPS publik di API v1, bukan upload dashboard ata
 Tidak ada deploy/restart/migrasi database layanan selama implementasi. Sebelum mengaktifkan kode ini, operator perlu menyediakan `ffprobe` di PATH (ffmpeg hanya diperlukan untuk fixture pengujian), memastikan disk dan URL APP_ORIGIN dapat diakses Meta serta Range tidak diblokir proxy, lalu menjalankan migrasi resmi dan restart secara manual sesuai prosedur layanan. Migrasi additive idempoten menambahkan `instagram_posts.media_type ENUM('IMAGE','REELS') NOT NULL DEFAULT 'IMAGE'`; baris lama menjadi IMAGE dan payload hash lama tetap sama. Jangan menjalankan kode baru sebelum migrasi selesai.
 
 Tidak ada login/izin tambahan secara otomatis. Akun tanpa izin content publish tetap ditolak. Meta masih dapat menolak video yang memenuhi kebijakan lokal; kualitas playback dan kompatibilitas provider nyata belum diverifikasi. Bukti pengujian lokal: [REELS-TEST-EVIDENCE.md](REELS-TEST-EVIDENCE.md).
+
+## Test Post dan Log Post di Integrasi
+
+Bagian bawah menu Integrasi menyediakan Test Post untuk gambar tunggal, carousel (2–10 URL), dan Reels (URL MP4). Pilih akun dengan izin publikasi dan konfirmasi sebelum mengirim posting sungguhan. Tidak ada pengiriman ulang otomatis saat hasil belum pasti.
+
+Log Post memakai `instagram_posts` yang sama untuk dashboard dan API, hanya untuk pemilik akun yang login. Tabel menampilkan akun, jenis media, waktu WIB, status, ID permintaan, dan detail error yang aman. Periksa status melanjutkan container yang sedang diproses dan mengambil tautan hasil bila tersedia; status unknown tidak diterbitkan ulang. Migrasi menambahkan error_code, error_message, dan permalink tanpa menyimpan caption, URL sumber, atau token. Fitur baru diuji dengan Meta tiruan; alur Test Post dashboard belum diuji ke Instagram sungguhan.

@@ -290,3 +290,22 @@
   align-items: center;
   gap: 8px;
 }
+
+#ig-test-form {
+  display: grid;
+  gap: 12px;
+  max-width: 720px;
+}
+#ig-post-log {
+  overflow-wrap: anywhere;
+}
+#ig-post-log td:last-child {
+  min-width: 120px;
+}
+#ig-post-log td:last-child a {
+  display: block;
+  margin-top: 8px;
+}
+#integrasi .table-wrap {
+  overflow-x: auto;
+}
