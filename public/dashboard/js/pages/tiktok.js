@@ -40,26 +40,32 @@ function tiktokIntegrationItem(account) {
 }
 // Akun TikTok ditampilkan di pemilih sesi AI, sementara formulir AI chat hanya menerima sesi berkemampuan pesan.
 function buildTikTokSessionCard(account) {
-  const item = tiktokIntegrationItem(account);
+  return buildContentSessionCard(account, 'tiktok', tiktokIntegrationItem(account));
+}
+function buildYouTubeSessionCard(account) {
+  return buildContentSessionCard(account, 'youtube', youtubeIntegrationItem(account));
+}
+function buildContentSessionCard(account, platform, item) {
+  const label = platform === 'youtube' ? 'YouTube' : 'TikTok';
   const card = element('article', 'ai-session-card ai-tiktok-card');
   card.setAttribute('role', 'button');
-  card.setAttribute('aria-label', 'TikTok ' + account.name);
+  card.setAttribute('aria-label', label + ' ' + account.name);
   card.tabIndex = 0;
   const head = element('div', 'ai-session-card-head');
-  const avatar = element('span', 'ai-session-avatar tiktok');
-  avatar.innerHTML = integrationIcons.tiktok;
+  const avatar = element('span', 'ai-session-avatar ' + platform);
+  avatar.innerHTML = integrationIcons[platform];
   const name = element('div', 'ai-session-card-name');
   const title = element('strong', '', account.name);
   title.title = account.name;
-  name.append(title, element('small', '', 'TikTok'));
+  name.append(title, element('small', '', label));
   head.append(avatar, name);
   const chips = element('div', 'ai-session-chips-row');
   chips.append(
-    element('span', 'ai-session-chip-plain', 'TikTok'),
+    element('span', 'ai-session-chip-plain', label),
     element('span', 'ai-session-chip-status ' + (item.connected ? 'online' : 'offline'), item.label),
   );
   const foot = element('div', 'ai-session-card-foot');
-  foot.append(element('span', 'ai-session-noprofile', 'Konten TikTok'), element('span', 'hint', 'Kelola koneksi'));
+  foot.append(element('span', 'ai-session-noprofile', 'Konten ' + label), element('span', 'hint', 'Kelola koneksi'));
   card.append(head, chips, foot);
   card.onclick = () => openIntegration(item);
   card.onkeydown = event => {

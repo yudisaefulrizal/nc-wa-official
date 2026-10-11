@@ -53,7 +53,7 @@ function buildAddCard(remaining) {
       '',
       full
         ? 'Slot sesi di paket kamu sudah penuh.'
-        : 'WhatsApp, Instagram, atau TikTok. Sisa ' + remaining + ' slot di paket kamu.',
+        : 'WhatsApp, Instagram, TikTok, atau YouTube. Sisa ' + remaining + ' slot di paket kamu.',
     ),
   );
   card.onclick = () => {
@@ -206,6 +206,7 @@ function renderSessionCards() {
   $('ai-session-cards').replaceChildren(
     ...aiSessions.map(buildSessionCard),
     ...aiTikTokConnections.map(buildTikTokSessionCard),
+    ...aiYouTubeConnections.map(buildYouTubeSessionCard),
     buildAddCard(limit - aiSessions.length),
   );
 }

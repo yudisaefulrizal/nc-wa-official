@@ -1,5 +1,8 @@
 function youtubeIntegrationItems() {
-  return youtubeAccounts.map(account => ({
+  return youtubeAccounts.map(youtubeIntegrationItem);
+}
+function youtubeIntegrationItem(account) {
+  return {
     kind: 'youtube',
     youtube: account,
     platform: 'youtube',
@@ -8,7 +11,7 @@ function youtubeIntegrationItems() {
     label: 'Terhubung',
     method: 'YouTube · akun Google',
     ai: '',
-  }));
+  };
 }
 function youtubeActions(account) {
   const actions = element('div', 'row-actions');
@@ -22,6 +25,7 @@ function youtubeActions(account) {
       return;
     await api('/api/youtube/connections/' + encodeURIComponent(account.id), 'DELETE');
     await loadIntegrations();
+    if (!$('ai').hidden) await loadAI();
   });
   remove.className = 'danger';
   actions.append(remove);

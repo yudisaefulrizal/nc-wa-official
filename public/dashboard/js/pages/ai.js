@@ -53,18 +53,20 @@ let aiUsagePage = 1,
 // dan lainnya; cukup ringan untuk diambil berkala, supaya logout dari HP atau scan QR di tempat lain langsung
 // terlihat tanpa memuat ulang halaman.
 async function refreshSessionCards(currentWallet) {
-  const [sessionRows, tiktokRows, wallet] = await Promise.all([
+  const [sessionRows, tiktokRows, youtubeRows, wallet] = await Promise.all([
     fetchSessions(),
     api('/api/tiktok/connections'),
+    api('/api/youtube/connections'),
     currentWallet ? Promise.resolve(currentWallet) : api('/api/wallet'),
   ]);
   const selected = $('ai-session').value;
   aiSessions = sessionRows;
   aiTikTokConnections = tiktokRows;
+  aiYouTubeConnections = youtubeRows;
   aiSessionLimit = wallet.chat_session_limit ?? wallet.session_limit;
   $('ai-session-placeholder').textContent =
-    !aiSessions.length && aiTikTokConnections.length
-      ? 'Pilih kartu TikTok untuk mengelola koneksi akun konten Anda.'
+    !aiSessions.length && (aiTikTokConnections.length || aiYouTubeConnections.length)
+      ? 'Pilih kartu TikTok atau YouTube untuk mengelola koneksi akun konten Anda.'
       : 'Pilih nomor layanan di atas terlebih dahulu untuk mengatur profil, perilaku, dan fallback.';
   if (!aiSessions.some(s => s.id === selected)) $('ai-session').value = aiSessions[0]?.id ?? '';
   renderSessionCards();
@@ -145,6 +147,7 @@ const sessionStatusMeta = {
 };
 let aiSessions = [],
   aiTikTokConnections = [],
+  aiYouTubeConnections = [],
   aiSessionLimit = 1;
 // Multi-profil: profil adalah alur AI yang disiapkan pemilik NC-WA; data profil adalah isi milik akun ini untuk satu
 // profil, bisa dipasang ke sesi mana pun. "Sesi" menyunting data profil yang terpasang di sesi terpilih; "Data
