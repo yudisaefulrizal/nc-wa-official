@@ -77,7 +77,7 @@ try {
     });
   });
   await page.goto(process.env.APP_ORIGIN + '/dashboard/integrasi');
-  await page.locator('#youtube-accounts').filter({ hasText: 'Channel Uji' }).waitFor();
+  await page.locator('#integrations-grid').filter({ hasText: 'Channel Uji' }).waitFor();
   await page.locator('#youtube-post-rows').filter({ hasText: 'Kuota API YouTube habis.' }).waitFor();
   await page.locator('#youtube-post-rows button').click();
   await page.locator('#youtube-post-rows').filter({ hasText: 'Terbit' }).waitFor();
@@ -107,7 +107,15 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: '/tmp/ncwa-youtube-screenshots/mobile.png', fullPage: true });
-  await page.locator('#youtube-connect').click();
+  await page
+    .locator('#integrations-grid')
+    .getByRole('button', { name: /Tambah sesi/ })
+    .click();
+  await page.locator('#sessionform input[value="youtube"]').check();
+  assert.equal(await page.locator('#session-name-field').isVisible(), false);
+  assert.equal(await page.locator('#sessionform input[name="id"]').isDisabled(), true);
+  assert.equal(await page.locator('#session-youtube-policy').isVisible(), true);
+  await page.locator('#session-submit').click();
   await page.waitForURL('**/mock-google?**');
   assert.equal(new URL(page.url()).searchParams.get('code_challenge_method'), 'S256');
   assert.deepEqual(errors, []);

@@ -7,6 +7,8 @@ const chainPaths = {
   off: 'M8 17H7A5 5 0 017 7h1M16 7h1a5 5 0 010 10h-1',
 };
 const integrationIcons = {
+  youtube:
+    '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/></svg>',
   tiktok:
     '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v12.5a4.5 4.5 0 1 1-4-4.47M14 3c0 4 2.5 6 6 6V5c-2.5 0-4-1-4-2z"/></svg>',
   whatsapp:
@@ -116,7 +118,7 @@ function integrationItems() {
       ai: s ? aiLine(s) : '',
     };
   });
-  return [...sessions, ...official, ...tiktokIntegrationItems()];
+  return [...sessions, ...official, ...tiktokIntegrationItems(), ...youtubeIntegrationItems()];
 }
 function aiLine(s) {
   return s.aiProfile ? s.aiProfile.name + (s.aiEnabled ? ' · AI aktif' : ' · AI mati') : 'Profil AI belum dipasang';
@@ -149,7 +151,7 @@ function integrationAddCard(remaining) {
       '',
       full
         ? 'Slot sesi di paket kamu sudah penuh.'
-        : 'WhatsApp, Instagram, atau TikTok. Sisa ' + remaining + ' slot di paket kamu.',
+        : 'WhatsApp, Instagram, TikTok, atau YouTube. Sisa ' + remaining + ' slot di paket kamu.',
     ),
   );
   card.onclick = () => {
@@ -199,6 +201,7 @@ function renderIntegrations() {
   else $('integration-dialog').close();
 }
 function integrationKey(item) {
+  if (item.kind === 'youtube') return 'youtube:' + item.youtube.id;
   if (item.kind === 'tiktok') return 'tiktok:' + item.tiktok.id;
   return item.kind === 'official' ? 'official:' + item.official.id : 'session:' + item.session.id;
 }
@@ -218,11 +221,13 @@ function openIntegration(item) {
   status.append(chainIcon(item.connected, item.label), element('span', '', item.label));
   const lines = [item.method, item.ai].filter(Boolean).map(text => element('p', 'hint', text));
   const actions =
-    item.kind === 'tiktok'
-      ? tiktokActions(item.tiktok)
-      : item.kind === 'official'
-        ? officialActions(item.official)
-        : integrationActions(item.session, item.platform);
+    item.kind === 'youtube'
+      ? youtubeActions(item.youtube)
+      : item.kind === 'tiktok'
+        ? tiktokActions(item.tiktok)
+        : item.kind === 'official'
+          ? officialActions(item.official)
+          : integrationActions(item.session, item.platform);
   $('integration-dialog-body').replaceChildren(status, ...lines, actions);
   if (!dialog.open) dialog.showModal();
 }

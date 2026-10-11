@@ -1604,6 +1604,11 @@
                   ><strong>TikTok</strong><small>Masuk dengan akun TikTok untuk mengelola konten Anda.</small></span
                 ></label
               ><label class="session-kind"
+                ><input type="radio" name="kind" value="youtube" /><span
+                  ><strong>YouTube</strong
+                  ><small>Masuk dengan akun Google untuk mengelola video channel Anda.</small></span
+                ></label
+              ><label class="session-kind"
                 ><input type="radio" name="kind" value="instagram" /><span
                   ><strong>Instagram lewat Zernio</strong
                   ><small>Memakai akun Zernio Anda; balasan memakai kredit yang sama dengan WhatsApp.</small></span
@@ -1634,6 +1639,11 @@
               </p>
               <button type="button" class="secondary" data-open-zernio>Kelola akun Zernio</button>
             </div>
+            <p id="session-youtube-policy" class="hint" hidden>
+              Hubungkan channel untuk membaca identitas dan mengunggah video yang Anda setujui.
+              <a href="/privacy" target="_blank" rel="noopener">Kebijakan Privasi NC-WA</a> ·
+              <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener">Ketentuan YouTube</a>
+            </p>
             <button id="session-submit">Hubungkan sesi</button>
           </form>
         </dialog>
@@ -1862,13 +1872,11 @@
           <section class="integrations-card" aria-labelledby="youtube-title">
             <div class="integration-heading">
               <h3 id="youtube-title">YouTube</h3>
-              <button type="button" id="youtube-connect">Hubungkan YouTube</button>
             </div>
             <p class="hint">
               <a href="/privacy" target="_blank" rel="noopener">Kebijakan Privasi NC-WA</a> ·
               <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener">Ketentuan YouTube</a>
             </p>
-            <div id="youtube-accounts" class="ig-keys"></div>
             <details>
               <summary>Test Post YouTube</summary>
               <form id="youtube-test-form">

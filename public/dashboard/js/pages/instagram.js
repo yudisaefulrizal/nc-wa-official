@@ -109,21 +109,25 @@ function syncSessionKind() {
   const kind = $('sessionform').querySelector('input[name="kind"]:checked')?.value;
   const instagram = kind === 'instagram',
     official = kind === 'instagram-official',
-    tiktok = kind === 'tiktok';
+    tiktok = kind === 'tiktok',
+    youtube = kind === 'youtube';
   // Login resmi memakai identitas dari provider; isian nama sesi tidak dikirim atau divalidasi saat OAuth.
-  $('session-name-field').hidden = official || tiktok;
-  $('sessionform').elements.id.required = !official && !tiktok;
-  $('sessionform').elements.id.disabled = official || tiktok;
+  $('session-name-field').hidden = official || tiktok || youtube;
+  $('sessionform').elements.id.required = !official && !tiktok && !youtube;
+  $('sessionform').elements.id.disabled = official || tiktok || youtube;
   $('session-instagram').hidden = !instagram;
   $('session-zernio').required = instagram;
   $('session-zernio').disabled = !instagram;
   $('session-instagram-account').required = instagram;
   $('session-instagram-account').disabled = !instagram;
-  $('session-submit').textContent = tiktok
-    ? 'Hubungkan TikTok'
-    : instagram || official
-      ? 'Hubungkan Instagram'
-      : 'Hubungkan sesi';
+  $('session-youtube-policy').hidden = !youtube;
+  $('session-submit').textContent = youtube
+    ? 'Hubungkan YouTube'
+    : tiktok
+      ? 'Hubungkan TikTok'
+      : instagram || official
+        ? 'Hubungkan Instagram'
+        : 'Hubungkan sesi';
   if (instagram) void run(loadZernio);
 }
 async function connectInstagram(sessionId, zernioId, instagramId) {

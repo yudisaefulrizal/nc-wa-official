@@ -754,6 +754,7 @@ $('refreshusage').onclick = () => run(usage);
 form('sessionform', async data => {
   if (data.kind === 'instagram-official') return startInstagramLogin();
   if (data.kind === 'tiktok') return startTikTokLogin();
+  if (data.kind === 'youtube') return startYouTubeLogin();
   if (data.kind === 'instagram') return connectInstagram(data.id, data.zernioId, data.instagramId);
   await api('/sessions', 'POST', { id: data.id });
   await sessions();

@@ -1,3 +1,32 @@
+function youtubeIntegrationItems() {
+  return youtubeAccounts.map(account => ({
+    kind: 'youtube',
+    youtube: account,
+    platform: 'youtube',
+    name: account.name,
+    connected: true,
+    label: 'Terhubung',
+    method: 'YouTube · akun Google',
+    ai: '',
+  }));
+}
+function youtubeActions(account) {
+  const actions = element('div', 'row-actions');
+  actions.append(button('Hubungkan ulang', startYouTubeLogin));
+  const remove = button('Putuskan', async () => {
+    if (
+      !confirm(
+        'Cabut akses YouTube dan hapus data koneksi serta log publikasinya dari NC-WA? Video di YouTube tetap tersedia.',
+      )
+    )
+      return;
+    await api('/api/youtube/connections/' + encodeURIComponent(account.id), 'DELETE');
+    await loadIntegrations();
+  });
+  remove.className = 'danger';
+  actions.append(remove);
+  return actions;
+}
 // Koneksi dan uji publikasi YouTube di Integrasi; kredensial Google tidak pernah dikirim ke browser.
 let youtubeAccounts = [];
 async function startYouTubeLogin() {
@@ -29,30 +58,6 @@ function showYouTubeResult() {
 }
 async function loadYouTube() {
   youtubeAccounts = await api('/api/youtube/connections');
-  const cards = youtubeAccounts.map(account => {
-    const card = element('article', 'integration-provider'),
-      text = element('div', 'integration-provider-text');
-    text.append(element('strong', '', account.name), element('small', '', 'YouTube · Terhubung'));
-    const actions = element('div', 'row-actions');
-    actions.append(
-      button('Hubungkan ulang', startYouTubeLogin),
-      button('Putuskan', async () => {
-        if (
-          !confirm(
-            'Cabut akses YouTube dan hapus data koneksi serta log publikasinya dari NC-WA? Video di YouTube tetap tersedia.',
-          )
-        )
-          return;
-        await api('/api/youtube/connections/' + encodeURIComponent(account.id), 'DELETE');
-        await loadYouTube();
-      }),
-    );
-    card.append(text, actions);
-    return card;
-  });
-  $('youtube-accounts').replaceChildren(
-    ...(cards.length ? cards : [element('p', 'hint', 'Belum ada channel YouTube terhubung.')]),
-  );
   const select = $('youtube-test-account'),
     previous = select.value;
   select.replaceChildren(
@@ -108,7 +113,6 @@ async function loadYouTubePosts() {
   );
   $('youtube-post-empty').hidden = !!rows.length;
 }
-$('youtube-connect').onclick = () => run(startYouTubeLogin);
 $('youtube-post-refresh').onclick = () => run(loadYouTubePosts);
 let youtubeRequest = null;
 $('youtube-test-form').addEventListener('input', () => {
