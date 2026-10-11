@@ -97,7 +97,7 @@ try {
   assert.equal(sent.channelId, channel);
   assert.equal(sent.containsSyntheticMedia, true);
   assert.equal(sent.madeForKids, false);
-  assert.equal(sent.privacyStatus, 'private');
+  assert.equal(sent.privacyStatus, 'public');
   const id = sent.requestId;
   await page.locator('#youtube-test-submit').click();
   await page.waitForTimeout(200);
