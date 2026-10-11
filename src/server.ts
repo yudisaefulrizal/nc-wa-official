@@ -1,3 +1,4 @@
+import { startYouTubeWorker, recoverUploads, refreshConnections } from './components/youtube/index.js';
 // Titik masuk aplikasi: mengambil kunci engine, memulihkan kredit, AI, sesi WhatsApp, dan Auto Share, lalu
 // menjalankan penjadwal, rekonsiliasi pembayaran, dan server HTTP. Berhenti rapi saat SIGTERM/SIGINT.
 import { ai, recoverContentJobs, startContentWorker } from './components/ai/index.js';
@@ -26,6 +27,7 @@ try {
 }
 try {
   await recoverReservations();
+  await recoverUploads();
   await ai.recover();
   await recoverContentJobs();
   await gateway.restore();
@@ -40,6 +42,17 @@ try {
 }
 const stopScheduler = startBasicScheduler();
 const stopContentWorker = startContentWorker();
+const stopYouTubeWorker = startYouTubeWorker();
+let youtubeMaintenance: Promise<void> | undefined;
+const maintainYouTube = () => {
+  youtubeMaintenance ??= refreshConnections()
+    .catch(() => console.error('Pemeriksaan YouTube gagal.'))
+    .finally(() => {
+      youtubeMaintenance = undefined;
+    });
+};
+const youtubeTimer = setInterval(maintainYouTube, 6 * 3600000).unref();
+maintainYouTube();
 let paymentWork: Promise<void> | undefined;
 const tick = () => {
   paymentWork ??= payments
@@ -65,11 +78,14 @@ async function stop(code = 0) {
   stopping = true;
   clearInterval(paymentTimer);
   clearInterval(instagramTimer);
+  clearInterval(youtubeTimer);
   const closed = new Promise<void>(resolve => server.close(() => resolve()));
   server.closeIdleConnections();
   try {
     await stopScheduler();
     await stopContentWorker();
+    await stopYouTubeWorker();
+    await youtubeMaintenance;
     await gateway.stop();
     await closed;
     await paymentWork;

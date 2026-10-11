@@ -291,7 +291,8 @@
   gap: 8px;
 }
 
-#ig-test-form {
+#ig-test-form,
+#youtube-test-form {
   display: grid;
   gap: 12px;
   max-width: 720px;
@@ -308,4 +309,27 @@
 }
 #integrasi .table-wrap {
   overflow-x: auto;
+}
+
+/* Uji YouTube dan log memakai komponen Integrasi yang sama, dengan tabel dapat digulir di ponsel. */
+#youtube-accounts {
+  margin-bottom: 20px;
+}
+#youtube-test-form {
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+#youtube-post-rows {
+  overflow-wrap: anywhere;
+}
+#youtube-post-rows td:last-child {
+  min-width: 130px;
+}
+#youtube-post-rows td:last-child a {
+  display: block;
+  margin-top: 8px;
+}
+#youtube-post-rows td:nth-child(2),
+#youtube-post-rows td:nth-child(5) {
+  min-width: 160px;
 }

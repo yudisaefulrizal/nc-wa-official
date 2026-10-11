@@ -95,15 +95,16 @@
       <div class="brand"><img src="/logo.png" alt="" /><span>NC-WA</span></div>
       <article>
         <h1>Kebijakan Privasi</h1>
-        <p class="updated">Terakhir diperbarui: 8 Oktober 2026</p>
+        <p class="updated">Terakhir diperbarui: 11 Oktober 2026</p>
 
         <p>
           NC-WA ("kami", "aplikasi ini") adalah layanan yang menghubungkan nomor WhatsApp dan akun Instagram profesional
           milik pelanggan kami ke asisten AI dan API, supaya pesan dari pelanggan mereka dapat dibaca dan dibalas. NC-WA
           juga menyediakan pengelolaan konten media sosial. Integrasi TikTok melalui Login Kit dan Content Posting API
           sedang dalam pengembangan; ketika tersedia dan Anda mengaktifkannya, integrasi digunakan untuk menghubungkan
-          akun serta mengunggah atau mempublikasikan konten atas persetujuan Anda. Kebijakan ini menjelaskan data apa
-          yang kami simpan, untuk apa, berapa lama, dan cara menghapusnya.
+          akun serta mengunggah atau mempublikasikan konten atas persetujuan Anda. Integrasi YouTube melalui YouTube API
+          Services juga sedang dalam pengembangan dan hanya digunakan ketika tersedia serta Anda mengaktifkannya.
+          Kebijakan ini menjelaskan data apa yang kami simpan, untuk apa, berapa lama, dan cara menghapusnya.
         </p>
 
         <h2>1. Pengelola data</h2>
@@ -188,11 +189,53 @@
           dipublikasikan di TikTok; konten tersebut dapat Anda kelola langsung di TikTok.
         </p>
 
+        <h2>Data integrasi YouTube dan Google</h2>
+        <p>
+          Ketika tersedia dan Anda menghubungkan YouTube melalui persetujuan Google, NC-WA menggunakan YouTube API
+          Services untuk mengakses identitas channel (ID, nama, dan avatar), izin yang diberikan, token akses, refresh
+          token, serta masa berlakunya. Kami memproses video yang Anda pilih, judul, deskripsi, pengaturan publikasi, ID
+          video, dan status unggahan. Kami tidak meminta atau menyimpan kata sandi Google Anda.
+        </p>
+        <p>
+          Data digunakan untuk menampilkan channel tujuan, mengunggah video atas permintaan Anda atau jadwal yang Anda
+          aktifkan, serta memeriksa hasil unggahan. Video dan metadata yang diperlukan dikirim ke Google/YouTube.
+          Aplikasi yang Anda hubungkan melalui API, seperti NC Post, hanya menerima identitas channel dan status
+          koneksi/publikasi sesuai izin akun NC-WA Anda; token Google tidak dibagikan ke aplikasi tersebut.
+        </p>
+        <p>
+          Data Google/YouTube tidak digunakan untuk iklan, dijual, atau dipakai untuk melatih model AI. Data tersebut
+          tidak diteruskan ke penyedia AI untuk fitur balasan pesan. Penggunaan dan transfer informasi yang diterima
+          dari Google APIs mengikuti
+          <a href="https://developers.google.com/terms/api-services-user-data-policy"
+            >Google API Services User Data Policy</a
+          >, termasuk persyaratan Limited Use. Pemrosesan oleh Google mengikuti
+          <a href="https://policies.google.com/privacy">Kebijakan Privasi Google</a>.
+        </p>
+        <p>
+          Token disimpan terenkripsi selama koneksi aktif. Identitas channel dan status video yang diperoleh melalui API
+          diperbarui atau dihapus paling lama setiap 30 hari. Data koneksi dan catatan publikasi disimpan selama
+          diperlukan untuk integrasi yang Anda aktifkan; salinan video hanya digunakan untuk proses unggahan dan tidak
+          menjadi arsip video permanen di NC-WA. Anda dapat mencabut akses melalui
+          <a href="https://security.google.com/settings/security/permissions">pengaturan izin akun Google</a>.
+          Pencabutan izin menghentikan akses berikutnya, tetapi bukan permintaan penghapusan video di YouTube.
+        </p>
+        <p>
+          Untuk meminta penghapusan data Google/YouTube yang tersimpan di NC-WA, termasuk token, data koneksi, salinan
+          media, dan catatan publikasi, hubungi
+          <a href="mailto:listmenarikyt@gmail.com">listmenarikyt@gmail.com</a>. Data terkait dihapus paling lama 7 hari
+          setelah permintaan diterima. Untuk pencabutan izin melalui pengaturan Google, validitas izin diperiksa berkala
+          dan data terkait dihapus paling lama 30 hari sejak pencabutan. Penghapusan di NC-WA tidak menghapus video yang
+          telah terbit; Anda dapat mengelolanya langsung di YouTube.
+        </p>
+
         <h2>3. Untuk apa data digunakan</h2>
         <ul>
           <li>Menampilkan pesan yang masuk ke akun Anda di dasbor dan mengirim balasan atas nama akun Anda;</li>
           <li>Menyusun balasan otomatis oleh asisten AI sesuai profil yang Anda pasang;</li>
           <li>Meneruskan pesan ke aplikasi Anda sendiri lewat API dan webhook yang Anda atur;</li>
+          <li>
+            Menghubungkan akun media sosial dan memproses publikasi sesuai permintaan atau jadwal yang Anda aktifkan;
+          </li>
           <li>Menjaga keamanan sesi login dan membatasi akses hanya ke data milik akun Anda.</li>
         </ul>
         <p>
@@ -216,6 +259,11 @@
             kami tidak menyimpan nomor kartu Anda.
           </li>
         </ul>
+        <p>
+          Untuk integrasi publikasi, media dan metadata yang Anda pilih dikirim ke platform tujuan (TikTok atau
+          Google/YouTube). Aplikasi yang Anda beri akses API dapat menerima identitas akun dan hasil publikasi milik
+          Anda untuk menjalankan integrasi tersebut.
+        </p>
         <p>Selain itu data tidak kami bagikan, kecuali diwajibkan oleh hukum yang berlaku.</p>
 
         <h2>5. Penyimpanan dan keamanan</h2>
@@ -228,7 +276,8 @@
 
         <h2>6. Lama penyimpanan</h2>
         <p>
-          Data disimpan selama akun NC-WA Anda aktif dan koneksinya masih terpasang. Bila Anda memutus sesi atau
+          Data disimpan selama akun NC-WA Anda aktif dan koneksinya masih terpasang. Data Google/YouTube mengikuti batas
+          penyimpanan dan penghapusan khusus pada bagian integrasi YouTube di atas. Bila Anda memutus sesi atau
           menghapusnya, riwayat chat dan data AI sesi itu ikut dihapus.
         </p>
 
@@ -246,7 +295,8 @@
           </li>
           <li>
             <strong>Lewat email:</strong> kirim permintaan ke
-            <a href="mailto:listmenarikyt@gmail.com">listmenarikyt@gmail.com</a>. Kami memprosesnya paling lama 30 hari.
+            <a href="mailto:listmenarikyt@gmail.com">listmenarikyt@gmail.com</a>. Kami memprosesnya paling lama 30 hari;
+            permintaan penghapusan data Google/YouTube mengikuti batas khusus 7 hari pada bagian di atas.
           </li>
         </ul>
 
@@ -257,7 +307,10 @@
         <p>
           Kebijakan ini dapat diperbarui sewaktu-waktu. Tanggal di bagian atas halaman selalu menunjukkan versi terbaru.
         </p>
-        <p>Ketentuan pemakaian layanan ada di <a href="/terms">Ketentuan Layanan</a>.</p>
+        <p>
+          Ketentuan pemakaian layanan ada di
+          <a href="/terms">Ketentuan Layanan</a>.
+        </p>
       </article>
     </main>
   </body>

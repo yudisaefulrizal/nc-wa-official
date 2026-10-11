@@ -1,3 +1,4 @@
+import { migrateYouTube } from './components/youtube/index.js';
 // Migrasi database (npm run migrate): tabel fondasi (akun, kredit, pembayaran, webhook) di file ini, lalu migrasi
 // setiap komponen. Semuanya aman dijalankan ulang.
 import { migrateAutoShare } from './components/auto-share/index.js';
@@ -100,6 +101,7 @@ try {
   await migrateInstagram();
   await migrateInstagramOfficial();
   await migrateTikTok();
+  await migrateYouTube();
   console.log('Migrasi fondasi dan AI selesai.');
 } finally {
   await db.end();

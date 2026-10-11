@@ -47,6 +47,7 @@ async function loadIntegrations() {
     api('/api/wallet'),
     api('/api/instagram/official'),
     api('/api/tiktok/connections'),
+    loadYouTube(),
     loadZernio(),
     // Daftar key hanya pelengkap: gagal memuatnya tidak boleh menahan kisi koneksi dan tombol tambah sesi.
     loadInstagramKeys().catch(() => {}),

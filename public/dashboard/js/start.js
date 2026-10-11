@@ -30,5 +30,6 @@ show = async () => {
 // Hasil login Instagram (?instagram=…) ditampilkan setelah render pertama selesai, karena run() mengosongkan pesan.
 void run(show).then(() => {
   showInstagramResult();
+  showYouTubeResult();
   showTikTokResult();
 });

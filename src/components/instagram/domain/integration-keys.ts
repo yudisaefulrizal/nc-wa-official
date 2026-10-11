@@ -9,6 +9,8 @@ import * as integrationKeysSql from '../data-access/integration-keys-queries.js'
 
 export const keyScopes = [
   'accounts:read',
+  'youtube:accounts:read',
+  'youtube:posts:publish',
   'messages:read',
   'messages:send',
   'comments:read',

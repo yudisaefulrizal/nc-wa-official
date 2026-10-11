@@ -1,3 +1,4 @@
+import { youtubeRoutes, youtubePublicRoutes, youtubeApiRoutes } from '../components/youtube/index.js';
 // Aplikasi HTTP: middleware, urutan pendaftaran rute semua komponen, halaman dashboard dan Editor profil dengan aset
 // berhash, file statis, 404, dan penanganan error.
 import {
@@ -48,6 +49,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   // Webhook Zernio membaca body mentah untuk tanda tangannya, jadi dipasang sebelum parser JSON.
   instagramPublicRoutes(app, { instagram });
   tiktokPublicRoutes(app, gateway);
+  youtubePublicRoutes(app);
   // Definisi graf Editor profil bisa jauh melewati 16 KB.
   const normalJson = express.json({ limit: '16kb' }),
     builderJson = express.json({ limit: '128kb' });
@@ -75,6 +77,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   });
   // API untuk aplikasi lain memakai key sendiri: tanpa batas per IP dashboard dan tanpa pemeriksaan Origin.
   instagramApiRoutes(app, { instagram });
+  youtubeApiRoutes(app);
   app.use('/api', rateLimit({ windowMs: 60000, limit: 120 }));
   app.use('/api', (req, res, next) => {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.get('origin') !== origin) {
@@ -93,6 +96,7 @@ export function createApp(gateway = defaultGateway, payments = defaultPayments, 
   contentAccountRoutes(app);
   instagramRoutes(app, { instagram });
   tiktokRoutes(app);
+  youtubeRoutes(app);
   instagramKeyRoutes(app);
   referralRoutes(app, { referral });
   app.use('/api/admin', (_req, res, next) => {

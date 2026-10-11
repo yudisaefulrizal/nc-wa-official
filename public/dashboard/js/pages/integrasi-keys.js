@@ -1,7 +1,9 @@
 // Bagian "API untuk aplikasi lain" di halaman Integrasi: membuat, menampilkan, dan mencabut key yang memberi
 // aplikasi lain akses ke akun Instagram yang terhubung. Key hanya tampil sekali, saat dibuat.
 const keyScopeLabels = {
-  'accounts:read': 'Lihat akun',
+  'accounts:read': 'Lihat akun Instagram',
+  'youtube:accounts:read': 'Lihat channel YouTube',
+  'youtube:posts:publish': 'Posting YouTube',
   'messages:read': 'Baca pesan',
   'messages:send': 'Kirim pesan',
   'comments:read': 'Baca komentar',
