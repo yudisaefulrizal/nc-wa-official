@@ -387,6 +387,148 @@
     max-height: 180px;
   }
 }
+/* Post TikTok memakai warna merek TikTok; dialognya memakai tata letak dialog Instagram. Warnanya ditulis sebagai
+   gradien karena aturan tombol umum di shared-pages.css lebih spesifik dan menimpa background-color. */
+/* Bertumpuk: kartu hasil bisa sempit (dua kolom di ponsel), dan label tombol tidak boleh terpotong. */
+.content-post-actions {
+  display: grid;
+  gap: 8px;
+}
+.workspace .content-tiktok-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(#111, #111);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 14px;
+}
+/* Tanpa ini, hover umum .workspace button:hover menghapus gradien saat tombol nonaktif masih tertunjuk kursor. */
+.workspace .content-tiktok-button:hover {
+  background: linear-gradient(#111, #111);
+}
+.workspace .content-tiktok-button:hover:not(:disabled) {
+  background: linear-gradient(#2b2b2b, #2b2b2b);
+}
+.workspace .content-tiktok-button:focus-visible {
+  outline: 3px solid #25f4ee;
+  outline-offset: 3px;
+}
+.workspace .content-tiktok-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.content-tiktok-button svg {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+}
+#content-tiktok-dialog {
+  width: min(820px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.content-tiktok-photos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.content-tiktok-photo {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.content-tiktok-photo img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f3f5f4;
+}
+.content-tiktok-photo .badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+}
+.workspace .content-tiktok-photo .secondary {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.content-tiktok-library {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+.workspace .content-tiktok-tile {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: none;
+  box-shadow: none;
+}
+.workspace .content-tiktok-tile[aria-pressed='true'] {
+  border-color: #111;
+}
+.content-tiktok-tile img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.content-tiktok-creator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.content-tiktok-creator img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+.content-tiktok-check {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+.content-tiktok-commercial {
+  margin: 12px 0;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+#content-tiktok-status {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+#content-tiktok-submit-wrap {
+  display: block;
+}
+@media (max-width: 640px) {
+  .content-tiktok-photos {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .content-tiktok-library {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 .content-image-field {
   display: flex;
   flex-direction: column;

@@ -54,12 +54,88 @@ State berlaku 10 menit dan disimpan sebagai hash. Cookie OAuth khusus memakai Sa
 lintas situs; cookie sesi login NC-WA tetap memakai pengaturan yang sudah ada. Koneksi TikTok yang sudah
 dimiliki tenant lain ditolak. Pengguna boleh menolak scope posting; dashboard menampilkan izin yang diberikan.
 
+## Direct Post foto dari Pustaka konten
+
+Tombol **Post TikTok** ada di setiap gambar hasil Konten. Dialognya mengikuti pedoman tampilan Content Sharing TikTok:
+info kreator dibaca ulang setiap akun dipilih dan nama akun tujuan ditampilkan; privasi dipilih dari
+`privacy_level_options` tanpa nilai bawaan; "Izinkan komentar" tidak dicentang dan dinonaktifkan bila kreator
+mematikannya; pengungkapan konten komersial ("Brand Anda" → label *Promotional content*, "Konten bermerek" → label
+*Paid partnership*, konten bermerek tidak boleh "Hanya saya"); teks persetujuan Music Usage Confirmation (ditambah
+Branded Content Policy untuk konten bermerek); pratinjau foto; dan pemberitahuan bahwa pemrosesan butuh beberapa menit.
+Satu posting berisi 1–35 foto dari Pustaka; foto pertama menjadi sampul. Posting tidak memotong kredit.
+
+Alur server (`domain/posts.ts`, tabel `tiktok_posts`):
+
+1. `postingToken` menolak koneksi di luar kuota sesi paket atau tanpa scope `video.publish`, lalu memperpanjang token
+   akses bila sisa masa berlakunya kurang dari 10 menit (token TikTok hanya 24 jam).
+2. Info kreator dibaca ulang; privasi harus ada di pilihan kreator.
+3. Foto diubah ke JPEG maksimal 1080×1920 (tegak) atau 1920×1080 (mendatar) dan disimpan sementara di
+   `storage/files/tiktok-outbound` (berlaku 2 jam, maksimum 350 file). TikTok mengambilnya lewat
+   `APP_ORIGIN/tiktok/media/<token-acak>` tanpa cookie (PULL_FROM_URL).
+4. Status `preparing → publishing` diklaim tepat sebelum `POST /v2/post/publish/content/init/` (`DIRECT_POST`, `PHOTO`).
+   Penolakan dengan kode TikTok menjadi `failed`; timeout, koneksi putus, atau 5xx menjadi `unknown` dan tidak pernah
+   dikirim ulang otomatis karena init Direct Post bisa sudah menerbitkan.
+5. `GET /api/tiktok/posts/:requestId` menanyakan `status/fetch`: `PUBLISH_COMPLETE` → `published`, `FAILED` → `failed`
+   dengan `fail_reason`. Dashboard memeriksa ulang setiap 15 detik.
+
+API dashboard tambahan:
+
+- `GET /api/tiktok/connections/:id/creator`: nama, username, avatar, pilihan privasi, dan status komentar kreator.
+- `POST /api/tiktok/posts`: `requestId`, `openId`, `fileIds` (1–35), `title` (≤90), `description` (≤4000),
+  `privacyLevel`, `allowComment`, `brandOrganic`, `brandContent`. Request ID yang sama dengan isi sama mengembalikan
+  status tersimpan; isi berbeda ditolak `idempotency_conflict`.
+- `GET /api/tiktok/posts/:requestId`: status (`preparing`, `publishing`, `processing`, `published`, `failed`,
+  `unknown`), jumlah foto, serta kode dan pesan error.
+
+**Wajib sebelum mencoba dengan TikTok sungguhan:** di Developer Portal, verifikasi kepemilikan URL Prefix
+`https://<domain>/tiktok/media/` (atau Domain) untuk domain `APP_ORIGIN`; tanpa itu init ditolak
+`url_ownership_unverified`. Selama aplikasi belum diaudit TikTok: maksimal 5 pengguna per 24 jam, akun TikTok harus
+privat, dan posting hanya bisa "Hanya saya" (`unaudited_client_can_only_post_to_private_accounts`). Batas TikTok lain:
+6 init per menit per token dan sekitar 15 posting per hari per kreator.
+
+## Direct Post video lewat API v1 (NC Post)
+
+Aplikasi lain memakai API key integrasi yang sama (`ncig_…`, dibuat di Integrasi › API untuk aplikasi lain) dengan
+scope `tiktok:accounts:read` dan/atau `tiktok:posts:publish`. Header: `Authorization: Bearer ncig_…`; batas 120
+permintaan per menit per key. Akun TikTok yang bukan milik pemilik key dijawab 404.
+
+| Scope | Endpoint |
+|---|---|
+| `tiktok:accounts:read` | `GET /api/v1/tiktok/accounts` (id = `open_id`, nama, scope, status masa berlaku, `serviceActive`) |
+| `tiktok:posts:publish` | `GET /api/v1/tiktok/accounts/:id/creator` (nama, username, avatar, `privacyOptions`, `commentDisabled`, `duetDisabled`, `stitchDisabled`, `maxVideoDurationSec`) |
+| `tiktok:posts:publish` | `POST /api/v1/tiktok/posts`, lalu `GET /api/v1/tiktok/posts/:requestId` berulang sampai `published`, `failed`, atau `unknown` |
+
+```http
+POST /api/v1/tiktok/posts
+Authorization: Bearer ncig_…
+Content-Type: application/json
+
+{"requestId":"tt-001","openId":"<id akun>","mediaType":"VIDEO","videoUrl":"https://media.example/video.mp4",
+ "title":"Caption #hashtag","privacyLevel":"SELF_ONLY","allowComment":false,"allowDuet":false,"allowStitch":false,
+ "brandOrganic":false,"brandContent":false}
+```
+
+- Semua pilihan (`privacyLevel`, `allowComment`, `allowDuet`, `allowStitch`, `brandOrganic`, `brandContent`) wajib dikirim
+  eksplisit; tidak ada nilai bawaan. `privacyLevel` harus salah satu `privacyOptions` dari info kreator; Duet/Stitch/
+  komentar yang dimatikan kreator ditolak 409; konten bermerek tidak boleh `SELF_ONLY`.
+- `title` adalah caption video (maks 2.200 karakter). Video: MP4 H.264/AAC, 3–180 detik, maks 64 MB (pemeriksa yang
+  sama dengan Reels) dan tidak melebihi `maxVideoDurationSec` akun. Video diunduh dan diperiksa sebelum permintaan
+  dicatat; video yang ditolak tidak meninggalkan baris dan boleh dikirim ulang dengan request ID yang sama.
+- NC-WA menyalin video ke `APP_ORIGIN/tiktok/media/<acak>.mp4` (prefiks yang sama dengan foto) lalu memanggil
+  `POST /v2/post/publish/video/init/` dengan `PULL_FROM_URL`. Status `unknown` berarti hasil init tidak pasti: periksa
+  akun TikTok, jangan mengirim ulang dengan request ID baru secara otomatis.
+- **Pedoman tampilan TikTok wajib dipenuhi aplikasi pemanggil (NC Post):** tampilkan nama kreator dari info kreator,
+  pilihan privasi tanpa nilai bawaan, interaksi tidak dicentang, pengungkapan konten komersial beserta labelnya,
+  teks persetujuan Music Usage Confirmation (dan Branded Content Policy untuk konten bermerek), pratinjau video,
+  dan pemberitahuan bahwa pemrosesan butuh beberapa menit.
+
+**Test Post TikTok** di Integrasi menguji alur yang sama dari dashboard (`POST /api/tiktok/test-post` dengan
+`consent: true`), untuk pemilik akun sebelum NC Post memakainya.
+
 ## Batas tahap ini
 
-Login Kit, daftar koneksi, refresh manual, dan putus koneksi sudah diimplementasikan. Refresh terjadwal,
-unggah konten, Direct Post, pelacakan status publikasi, serta webhook TikTok belum diimplementasikan.
-Kebijakan privasi tetap menyebut fitur posting dalam pengembangan. Publikasi video publik di Sandbox
-tidak tersedia. Jangan menganggap Direct Post sudah siap hanya karena scope muncul di portal.
+Unggah video dari perangkat (FILE_UPLOAD), video di atas 64 MB/180 detik, mode kirim ke draf/inbox, refresh token terjadwal, daftar riwayat posting, dan webhook
+TikTok belum diimplementasikan. Direct Post video sudah dicoba pemilik ke TikTok sungguhan (Sandbox, akun privat, "Hanya saya") lewat Test Post di Integrasi dan terbit (2026-10-13; MP4 H.264/AAC 960×540, 5 detik). Domain `ncwa-dev.nuscode.id` sudah diverifikasi lewat record TXT DNS. Direct Post foto belum diuji dengan TikTok sungguhan. Tes otomatis memakai TikTok tiruan dan menghapus media sementara buatannya sendiri, karena ditulis ke `storage/` yang sama dengan server dev.
 
 Tes otomatis memakai provider tiruan. Login dengan akun TikTok sungguhan berhasil diuji pemilik
 melalui domain dev pada 8 Oktober 2026. Revoke dengan akun TikTok sungguhan belum diuji.

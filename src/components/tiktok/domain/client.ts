@@ -40,3 +40,35 @@ export function validateToken(body: Record<string, any>) {
     if (!Number.isSafeInteger(body[field]) || body[field] <= 0 || body[field] > 10 * 366 * 86400) throw failed();
   if (!body.scope.split(',').includes('user.info.basic')) throw failed();
 }
+// Pemanggilan Content Posting API dengan token pengguna. Berbeda dari requestTikTok, kode error TikTok dikembalikan
+// karena alur posting membedakan penolakan pasti (`rejected`) dari hasil yang tidak diketahui (`unreachable`).
+export type PostingResult =
+  | { kind: 'ok'; data: Record<string, any> }
+  | { kind: 'rejected'; code: string; status: number }
+  | { kind: 'unreachable' };
+export async function postingRequest(path: string, accessToken: string, body: object): Promise<PostingResult> {
+  let response: Response;
+  try {
+    response = await fetch(apiBase() + path, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json; charset=UTF-8' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+      redirect: 'error',
+    });
+  } catch {
+    return { kind: 'unreachable' };
+  }
+  let parsed: Record<string, any> | undefined;
+  try {
+    parsed = (await response.json()) as Record<string, any>;
+  } catch {
+    parsed = undefined;
+  }
+  const code = typeof parsed?.error?.code === 'string' ? parsed.error.code.slice(0, 64) : '';
+  if (response.ok && code === 'ok' && parsed?.data && typeof parsed.data === 'object')
+    return { kind: 'ok', data: parsed.data };
+  // 5xx tanpa kode jelas berarti TikTok mungkin sudah memproses permintaan.
+  if (response.status >= 500 || !code) return { kind: 'unreachable' };
+  return { kind: 'rejected', code, status: response.status };
+}

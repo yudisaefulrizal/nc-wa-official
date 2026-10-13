@@ -1,4 +1,5 @@
 // Daftar, perpanjangan, dan pencabutan koneksi TikTok milik tenant yang sedang login.
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { db } from '../../../libraries/db.js';
 import { basicWallet } from '../../billing/index.js';
 import { decrypt, encrypt } from '../../../libraries/crypto.js';
@@ -26,36 +27,26 @@ export async function listConnections(account: string) {
 }
 // Penguncian menyerialkan refresh dan revoke karena refresh token TikTok dapat berubah setelah digunakan.
 export async function refreshConnection(account: string, id: string) {
-  const c = await db.getConnection();
-  try {
-    await c.beginTransaction();
-    const [rows] = await connectionsSql.lock(c, [account, id]);
-    const row = rows[0];
-    if (!row) throw new ApiError(404, 'not_found', 'Koneksi TikTok tidak ditemukan');
-    if (new Date(row.refresh_expires_at).getTime() <= Date.now())
-      throw new ApiError(409, 'tiktok_expired', 'Izin TikTok berakhir; hubungkan ulang akun');
-    const token = await tokenRequest({ grant_type: 'refresh_token', refresh_token: decrypt(row.refresh_token) });
-    validateToken(token);
-    if (token.open_id !== id) throw failed();
-    await connectionsSql.updateOwned(c, [
-      row.display_name,
-      row.avatar_url,
-      encrypt(token.access_token),
-      encrypt(token.refresh_token),
-      token.scope,
-      token.expires_in,
-      token.refresh_expires_in,
-      account,
-      id,
-    ]);
-    await c.commit();
-    return { ok: true };
-  } catch (error) {
-    await c.rollback();
-    throw error;
-  } finally {
-    c.release();
-  }
+  await withLockedConnection(account, id, (c, row) => renewLocked(c, account, id, row));
+  return { ok: true };
+}
+// Token akses untuk posting. TikTok hanya memberi token 24 jam, jadi token yang hampir habis diperpanjang dulu.
+// Koneksi di luar kuota sesi paket tidak boleh posting, sama seperti sesi chat yang nonaktif.
+export async function postingToken(account: string, id: string) {
+  const connection = (await listConnections(account)).find(item => item.id === id);
+  if (!connection) throw new ApiError(404, 'not_found', 'Koneksi TikTok tidak ditemukan');
+  if (!connection.serviceActive)
+    throw new ApiError(409, 'session_inactive', 'Koneksi TikTok nonaktif karena melebihi kuota sesi paket');
+  if (!connection.scopes.includes('video.publish'))
+    throw new ApiError(409, 'tiktok_publish_permission', 'Hubungkan ulang TikTok dan izinkan posting konten');
+  return accessToken(account, id);
+}
+// Token tanpa syarat kuota, untuk memantau posting yang sudah dikirim walaupun koneksinya kini nonaktif.
+export function accessToken(account: string, id: string) {
+  return withLockedConnection(account, id, async (c, row) => {
+    if (new Date(row.expires_at).getTime() - Date.now() > 10 * 60000) return decrypt(row.access_token) as string;
+    return renewLocked(c, account, id, row);
+  });
 }
 export async function disconnectConnection(account: string, id: string) {
   const c = await db.getConnection();
@@ -89,4 +80,46 @@ export async function disconnectConnection(account: string, id: string) {
   } finally {
     c.release();
   }
+}
+
+async function withLockedConnection<T>(
+  account: string,
+  id: string,
+  work: (c: PoolConnection, row: RowDataPacket) => Promise<T>,
+) {
+  const c = await db.getConnection();
+  try {
+    await c.beginTransaction();
+    const [rows] = await connectionsSql.lock(c, [account, id]);
+    const row = rows[0];
+    if (!row) throw new ApiError(404, 'not_found', 'Koneksi TikTok tidak ditemukan');
+    const result = await work(c, row);
+    await c.commit();
+    return result;
+  } catch (error) {
+    await c.rollback();
+    throw error;
+  } finally {
+    c.release();
+  }
+}
+// Mengembalikan token akses baru; refresh token hasil rotasi disimpan dalam transaksi yang sama.
+async function renewLocked(c: PoolConnection, account: string, id: string, row: RowDataPacket) {
+  if (new Date(row.refresh_expires_at).getTime() <= Date.now())
+    throw new ApiError(409, 'tiktok_expired', 'Izin TikTok berakhir; hubungkan ulang akun');
+  const token = await tokenRequest({ grant_type: 'refresh_token', refresh_token: decrypt(row.refresh_token) });
+  validateToken(token);
+  if (token.open_id !== id) throw failed();
+  await connectionsSql.updateOwned(c, [
+    row.display_name,
+    row.avatar_url,
+    encrypt(token.access_token),
+    encrypt(token.refresh_token),
+    token.scope,
+    token.expires_in,
+    token.refresh_expires_in,
+    account,
+    id,
+  ]);
+  return token.access_token as string;
 }

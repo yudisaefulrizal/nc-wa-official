@@ -60,6 +60,7 @@ async function loadIntegrations() {
   integrations.limit = wallet.session_limit;
   renderIntegrations();
   loadIntegrationPostAccounts();
+  loadTiktokTestAccounts();
   await loadIntegrationPosts().catch(error => {
     $('ig-post-log-message').textContent = error.message;
   });

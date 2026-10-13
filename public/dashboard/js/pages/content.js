@@ -266,7 +266,9 @@ function contentImageCard(file, job, label) {
   reference.prepend(contentActionIcon('reference'));
   actions.append(download, reference);
   const footer = element('div', 'content-image-footer');
-  footer.append(contentInstagramButton(file), actions);
+  const post = element('div', 'content-post-actions');
+  post.append(contentInstagramButton(file), contentTiktokButton(file));
+  footer.append(post, actions);
   card.append(image, footer);
   return card;
 }

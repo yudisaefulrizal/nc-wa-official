@@ -4,6 +4,8 @@ const keyScopeLabels = {
   'accounts:read': 'Lihat akun Instagram',
   'youtube:accounts:read': 'Lihat channel YouTube',
   'youtube:posts:publish': 'Posting YouTube',
+  'tiktok:accounts:read': 'Lihat akun TikTok',
+  'tiktok:posts:publish': 'Posting TikTok',
   'messages:read': 'Baca pesan',
   'messages:send': 'Kirim pesan',
   'comments:read': 'Baca komentar',

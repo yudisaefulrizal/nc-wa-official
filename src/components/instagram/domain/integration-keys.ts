@@ -11,6 +11,8 @@ export const keyScopes = [
   'accounts:read',
   'youtube:accounts:read',
   'youtube:posts:publish',
+  'tiktok:accounts:read',
+  'tiktok:posts:publish',
   'messages:read',
   'messages:send',
   'comments:read',

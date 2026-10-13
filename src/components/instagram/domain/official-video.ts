@@ -96,6 +96,8 @@ export async function validatePostVideo(path: string) {
       width * height > 3686400
     )
       throw invalid();
+    // Durasi dipakai pemanggil lain (TikTok) untuk dibandingkan dengan batas akun kreator.
+    return { duration };
   } catch {
     throw invalid();
   }

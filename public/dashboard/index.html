@@ -601,6 +601,82 @@
               </div>
             </form>
           </dialog>
+          <dialog id="content-tiktok-dialog" aria-labelledby="content-tiktok-title">
+            <div class="content-result-heading">
+              <h2 id="content-tiktok-title">Post TikTok</h2>
+              <button type="button" id="content-tiktok-close" class="secondary">Tutup</button>
+            </div>
+            <p class="content-helper">Posting foto langsung ke TikTok · foto pertama menjadi sampul.</p>
+            <form id="content-tiktok-form" class="content-instagram-layout">
+              <div>
+                <ol id="content-tiktok-photos" class="content-tiktok-photos" aria-label="Foto yang akan diposting"></ol>
+                <button type="button" id="content-tiktok-add" class="secondary">Tambah gambar dari Pustaka</button>
+                <div id="content-tiktok-picker" hidden>
+                  <p class="content-helper">Klik gambar untuk menambah atau melepasnya · maksimal 35 foto.</p>
+                  <div id="content-tiktok-library" class="content-tiktok-library"></div>
+                  <button type="button" id="content-tiktok-more" class="secondary">Muat lebih banyak</button>
+                </div>
+              </div>
+              <div>
+                <label>Akun TikTok<select id="content-tiktok-account" required></select></label>
+                <p id="content-tiktok-creator" class="content-tiktok-creator" hidden>
+                  <img id="content-tiktok-avatar" alt="" hidden /><span id="content-tiktok-creator-name"></span>
+                </p>
+                <label
+                  >Judul<input
+                    id="content-tiktok-title-input"
+                    maxlength="90"
+                    aria-describedby="content-tiktok-title-count"
+                /></label>
+                <small id="content-tiktok-title-count" class="content-helper">0 / 90</small>
+                <label
+                  >Deskripsi<textarea
+                    id="content-tiktok-description"
+                    rows="4"
+                    maxlength="4000"
+                    placeholder="Tulis deskripsi, #hashtag, dan @mention."
+                    aria-describedby="content-tiktok-description-count"
+                  ></textarea>
+                </label>
+                <small id="content-tiktok-description-count" class="content-helper">0 / 4.000</small>
+                <label
+                  >Siapa yang dapat melihat posting ini<select id="content-tiktok-privacy" required></select>
+                </label>
+                <label class="content-tiktok-check"
+                  ><input id="content-tiktok-comment" type="checkbox" /> Izinkan komentar</label
+                >
+                <fieldset class="content-tiktok-commercial">
+                  <label class="content-tiktok-check"
+                    ><input id="content-tiktok-commercial" type="checkbox" /> Ungkapkan konten komersial</label
+                  >
+                  <small class="content-helper"
+                    >Aktifkan bila posting ini mempromosikan diri Anda, brand, produk, atau layanan.</small
+                  >
+                  <div id="content-tiktok-commercial-options" hidden>
+                    <label class="content-tiktok-check"
+                      ><input id="content-tiktok-brand-organic" type="checkbox" /> Brand Anda</label
+                    >
+                    <small class="content-helper">Anda mempromosikan diri sendiri atau bisnis Anda.</small>
+                    <label class="content-tiktok-check"
+                      ><input id="content-tiktok-brand-content" type="checkbox" /> Konten bermerek</label
+                    >
+                    <small class="content-helper">Anda mempromosikan brand atau pihak ketiga lain.</small>
+                    <p id="content-tiktok-commercial-label" class="content-helper"></p>
+                  </div>
+                </fieldset>
+                <p id="content-tiktok-consent" class="content-helper"></p>
+                <p class="content-helper">
+                  Setelah dikirim, TikTok memerlukan beberapa menit untuk memproses sebelum posting muncul di profil.
+                </p>
+                <p id="content-tiktok-status" role="status" aria-live="polite"></p>
+                <span id="content-tiktok-submit-wrap"
+                  ><button type="submit" id="content-tiktok-submit" class="content-tiktok-button" disabled>
+                    Post TikTok
+                  </button></span
+                >
+              </div>
+            </form>
+          </dialog>
           <dialog id="content-brand-dialog">
             <div class="content-result-heading">
               <h2>Identitas brand</h2>
@@ -1956,7 +2032,7 @@
               </div>
             </div>
             <p class="hint">
-              Aplikasi lain memakai akun Instagram dan YouTube yang terhubung di sini sesuai izin key ini.
+              Aplikasi lain memakai akun Instagram, YouTube, dan TikTok yang terhubung di sini sesuai izin key ini.
             </p>
             <div id="ig-keys" class="ig-keys"></div>
           </section>
@@ -2009,6 +2085,57 @@
               ><span id="ig-post-log-page"></span
               ><button type="button" id="ig-post-log-next" class="secondary">Berikutnya</button>
             </div>
+          </section>
+          <section class="integrations-card" aria-labelledby="tiktok-test-title">
+            <h3 id="tiktok-test-title">Test Post TikTok</h3>
+            <p class="hint">
+              Menguji Direct Post video lewat alur yang sama dengan API v1 untuk NC Post. Selama aplikasi belum diaudit
+              TikTok, akun TikTok harus privat dan privasi hanya "Hanya saya".
+            </p>
+            <form id="tiktok-test-form">
+              <label>Akun TikTok<select id="tiktok-test-account" required></select></label>
+              <p id="tiktok-test-creator" class="hint"></p>
+              <label
+                >URL video MP4 publik<input
+                  id="tiktok-test-video"
+                  type="url"
+                  required
+                  placeholder="https://…/video.mp4"
+              /></label>
+              <small class="hint">MP4 H.264/AAC, 3–180 detik, maksimal 64 MB.</small>
+              <label>Caption<textarea id="tiktok-test-caption" maxlength="2200"></textarea></label>
+              <label>Siapa yang dapat melihat posting ini<select id="tiktok-test-privacy" required></select> </label>
+              <fieldset class="tiktok-test-options">
+                <legend>Interaksi</legend>
+                <label><input type="checkbox" id="tiktok-test-comment" /> Izinkan komentar</label
+                ><label><input type="checkbox" id="tiktok-test-duet" /> Izinkan Duet</label
+                ><label><input type="checkbox" id="tiktok-test-stitch" /> Izinkan Stitch</label>
+              </fieldset>
+              <fieldset class="tiktok-test-options">
+                <legend>Konten komersial</legend>
+                <label><input type="checkbox" id="tiktok-test-brand-organic" /> Brand Anda (Promotional content)</label
+                ><label
+                  ><input type="checkbox" id="tiktok-test-brand-content" /> Konten bermerek (Paid partnership)</label
+                >
+              </fieldset>
+              <p id="tiktok-test-consent" class="hint">
+                Dengan memposting, Anda menyetujui
+                <a
+                  href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >Music Usage Confirmation</a
+                >
+                TikTok.
+              </p>
+              <label
+                ><input type="checkbox" id="tiktok-test-agree" required /> Saya setuju menerbitkan posting sungguhan ke
+                akun yang dipilih.</label
+              >
+              <button type="submit" id="tiktok-test-submit">Kirim posting sungguhan</button>
+              <button type="button" id="tiktok-test-check" class="secondary" hidden>Periksa status</button>
+              <p id="tiktok-test-status" role="status" aria-live="polite"></p>
+            </form>
           </section>
         </section>
         <section id="api-integrasi" hidden>
@@ -2817,6 +2944,7 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
     <script src="/dashboard/js/pages/instagram.js" defer></script>
     <script src="/dashboard/js/pages/integrasi.js" defer></script>
     <script src="/dashboard/js/pages/integrasi-posts.js" defer></script>
+    <script src="/dashboard/js/pages/integrasi-tiktok-test.js" defer></script>
     <script src="/dashboard/js/pages/tiktok.js" defer></script>
     <script src="/dashboard/js/pages/youtube.js" defer></script>
     <script src="/dashboard/js/pages/integrasi-keys.js" defer></script>
@@ -2837,6 +2965,7 @@ X-API-Key: KUNCI_ANDA   # header bebas, opsional
     <script src="/dashboard/js/pages/dokumentasi.js" defer></script>
     <script src="/dashboard/js/pages/content.js" defer></script>
     <script src="/dashboard/js/pages/content-instagram.js" defer></script>
+    <script src="/dashboard/js/pages/content-tiktok.js" defer></script>
     <script src="/dashboard/js/start.js" defer></script>
   </body>
 </html>
