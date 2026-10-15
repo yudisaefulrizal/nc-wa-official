@@ -1,0 +1,62 @@
+name: Deploy NC-WA Official
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: nc-wa-official-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: nc-wa-official-production
+    timeout-minutes: 30
+    steps:
+      - name: Install verified cloudflared
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.10.0/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          printf 'd33ff2d14475178d2012c2c56beba87389ac5ded27649519f198a7d3134a99db  %s\n' "$RUNNER_TEMP/cloudflared" | sha256sum --check -
+          chmod 700 "$RUNNER_TEMP/cloudflared"
+          "$RUNNER_TEMP/cloudflared" --version
+
+      - name: Deploy through Cloudflare Access SSH
+        shell: bash
+        env:
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.NC_WA_OFFICIAL_CF_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.NC_WA_OFFICIAL_CF_ACCESS_CLIENT_SECRET }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.NC_WA_OFFICIAL_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.NC_WA_OFFICIAL_SSH_KNOWN_HOSTS }}
+          DEPLOY_SSH_HOST: ${{ vars.NC_WA_OFFICIAL_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ vars.NC_WA_OFFICIAL_SSH_USER }}
+        run: |
+          set -euo pipefail
+          for name in TUNNEL_SERVICE_TOKEN_ID TUNNEL_SERVICE_TOKEN_SECRET DEPLOY_SSH_PRIVATE_KEY DEPLOY_KNOWN_HOSTS DEPLOY_SSH_HOST DEPLOY_SSH_USER; do
+            if [[ -z ${!name} ]]; then
+              printf 'Missing required secret or variable: %s\n' "$name" >&2
+              exit 1
+            fi
+          done
+          umask 077
+          SSH_DIR=$(mktemp -d "$RUNNER_TEMP/nc-wa-ssh.XXXXXXXX")
+          trap 'rm -rf "$SSH_DIR"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" | tr -d '\r' > "$SSH_DIR/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$SSH_DIR/known_hosts"
+          ssh -T -i "$SSH_DIR/key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            -o "ProxyCommand=$RUNNER_TEMP/cloudflared access ssh --hostname %h" \
+            "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST" deploy
